@@ -18,7 +18,7 @@ interface BoardDetailPageProps {
   mediaItems: MediaItem[];
   onBack: () => void;
   onMediaClick: (media: MediaItem) => void;
-  onUpdateBoard: (boardId: string, updates: Partial<Board>) => void;
+  onUpdateBoard: (boardId: string, updates: Partial<Board> & { mediaType?: string }) => void;
   onDeleteBoard?: (boardId: string) => void;
 }
 

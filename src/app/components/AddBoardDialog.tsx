@@ -34,7 +34,7 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
       name: title,
       mediaIds: [],
       isPublic: false,
-      coverImage: imageUpload || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400',
+      coverImage: imageUpload || undefined,
       createdAt: new Date().toISOString().split('T')[0],
       description,
     };

@@ -1,4 +1,3 @@
-import image_d701c50805b8f411e6977c9ee5b652776603f1d8 from 'figma:asset/d701c50805b8f411e6977c9ee5b652776603f1d8.png';
 import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
@@ -117,7 +116,7 @@ export function AddMediaDialog({ onAdd, boards, customGenres, customMediaTypes, 
       type,
       genre: selectedGenres,
       status,
-      imageUrl: imageUpload || image_d701c50805b8f411e6977c9ee5b652776603f1d8,
+      imageUrl: imageUpload || undefined,
       rating: rating > 0 ? rating : undefined,
       dateAdded: new Date().toISOString().split('T')[0],
       dateStarted: dateStarted || undefined,
