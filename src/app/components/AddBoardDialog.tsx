@@ -34,7 +34,7 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
       name: title,
       mediaIds: [],
       isPublic: false,
-      coverImage: imageUpload || undefined,
+      coverImage: imageUpload || '',
       createdAt: new Date().toISOString().split('T')[0],
       description,
     };

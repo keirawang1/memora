@@ -1,4 +1,4 @@
-import { Board, User } from '../types/media';
+import type { Board, User } from '../types/media';
 
 /**
  * Creates the default "All" board that should always exist

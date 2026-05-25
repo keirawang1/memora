@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Board, MediaItem } from '../types/media';
+import type { Board, MediaItem } from '../types/media';
 import { MediaCard } from './MediaCard';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';

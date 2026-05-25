@@ -7,8 +7,9 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { Star, Calendar, Tag, Trash2, Save, Pencil, X, Upload } from 'lucide-react';
-import { MediaItem, MediaType, WatchStatus, Genre } from '../types/media';
+import type { MediaItem, MediaType, WatchStatus, Genre } from '../types/media';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+
 import {
   AlertDialog,
   AlertDialogAction,

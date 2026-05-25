@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MediaItem, Board } from '../types/media';
+import type { MediaItem, Board } from '../types/media';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { MediaCard } from './MediaCard';
 import { Sparkles, TrendingUp, Star, Heart, Flame, Zap, Plus, Circle, CheckCircle2 } from 'lucide-react';

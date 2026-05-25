@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Board, MediaItem } from '../types/media';
+import type { Board, MediaItem } from '../types/media';
 import { BoardCard } from './BoardCard';
 import { Input } from './ui/input';
 import { Plus } from 'lucide-react';

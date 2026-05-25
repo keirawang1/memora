@@ -1,4 +1,4 @@
-import { MediaItem } from '../types/media';
+import type { MediaItem } from '../types/media';
 import { Badge } from './ui/badge';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 

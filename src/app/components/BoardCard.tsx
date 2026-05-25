@@ -1,4 +1,4 @@
-import { Board } from '../types/media';
+import type { Board } from '../types/media';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Plus } from 'lucide-react';
 

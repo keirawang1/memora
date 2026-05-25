@@ -5,7 +5,7 @@
  * For default data initialization, see data/defaults.ts
  */
 
-import { MediaItem, Friend, UserStats } from '../types/media';
+import type { MediaItem, Friend, UserStats } from '../types/media';
 
 // Empty exports for backwards compatibility
 export const mockMediaItems: MediaItem[] = [];

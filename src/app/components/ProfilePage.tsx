@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, UserStats, MediaItem } from '../types/media';
+import type { User, UserStats, MediaItem } from '../types/media';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';

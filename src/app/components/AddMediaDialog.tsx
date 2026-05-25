@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { Plus, X, Upload, Star, Circle, CheckCircle2 } from 'lucide-react';
-import { MediaType, WatchStatus, Genre, Board } from '../types/media';
+import type { MediaType, WatchStatus, Genre, Board } from '../types/media';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Check } from 'lucide-react';

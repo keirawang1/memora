@@ -15,7 +15,7 @@ import {
   mockFriendActivity
 } from './app/data/mockData';
 import { getDefaultBoards, createDefaultUser } from './app/data/defaults';
-import { MediaItem, Friend, Board, UserStats } from './app/types/media';
+import type { MediaItem, Friend, Board, UserStats } from './app/types/media';
 import { Library, User, Users, Sparkles, Settings } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './app/components/ui/dropdown-menu';
