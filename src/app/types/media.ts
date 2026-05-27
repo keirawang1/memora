@@ -1,5 +1,5 @@
 export type MediaType = string;
-export type WatchStatus = 'watched' | 'want-to-watch' | 'watching' | 'dropped';
+export type WatchStatus = 'completed' | 'not-started' | 'ongoing' | 'dropped';
 export type Genre = string;
 
 export interface MediaItem {

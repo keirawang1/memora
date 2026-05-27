@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -25,6 +25,7 @@ import {
 interface AddMediaDialogProps {
   onAdd: (media: any, boardIds?: string[]) => void;
   boards: Board[];
+  currentBoardId?: string;
   customGenres: string[];
   customMediaTypes: string[];
   onAddCustomGenre: (genre: string) => void;
@@ -33,14 +34,14 @@ interface AddMediaDialogProps {
 }
 
 const defaultMediaTypes: string[] = ['movie', 'tv', 'anime', 'comic', 'book'];
-const watchStatuses: WatchStatus[] = ['watched', 'watching', 'want-to-watch', 'dropped'];
+const watchStatuses: WatchStatus[] = ['completed', 'ongoing', 'not-started', 'dropped'];
 const defaultGenres: string[] = ['Action', 'Comedy', 'Drama', 'Sci-Fi', 'Fantasy', 'Horror', 'Romance', 'Thriller', 'Historical', 'Mystery'];
 
-export function AddMediaDialog({ onAdd, boards, customGenres, customMediaTypes, onAddCustomGenre, onAddCustomMediaType, accentColor = '#5C2B17' }: AddMediaDialogProps) {
+export function AddMediaDialog({ onAdd, boards, currentBoardId, customGenres, customMediaTypes, onAddCustomGenre, onAddCustomMediaType, accentColor = '#5C2B17' }: AddMediaDialogProps) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [type, setType] = useState<MediaType>('movie');
-  const [status, setStatus] = useState<WatchStatus>('want-to-watch');
+  const [status, setStatus] = useState<WatchStatus>('not-started');
   const [selectedGenres, setSelectedGenres] = useState<Genre[]>([]);
   const [imageUpload, setImageUpload] = useState<string>('');
   const [rating, setRating] = useState(0);
@@ -55,6 +56,16 @@ export function AddMediaDialog({ onAdd, boards, customGenres, customMediaTypes, 
   const [showAddMediaTypeDialog, setShowAddMediaTypeDialog] = useState(false);
   const [newGenreInput, setNewGenreInput] = useState('');
   const [newMediaTypeInput, setNewMediaTypeInput] = useState('');
+
+  // Pre-select the board the user is currently viewing (excluding "All"), reset on close
+  useEffect(() => {
+    if (open) {
+      const isSelectable = currentBoardId && boards.find(b => b.id === currentBoardId && b.name !== 'All');
+      setSelectedBoards(isSelectable ? [currentBoardId] : []);
+    } else {
+      setSelectedBoards([]);
+    }
+  }, [open, currentBoardId, boards]);
 
   const handleAddGenre = (genre: Genre) => {
     if (genre === '__ADD_NEW__') {
@@ -116,7 +127,7 @@ export function AddMediaDialog({ onAdd, boards, customGenres, customMediaTypes, 
       type,
       genre: selectedGenres,
       status,
-      imageUrl: imageUpload || undefined,
+      imageUrl: imageUpload || '',
       rating: rating > 0 ? rating : undefined,
       dateAdded: new Date().toISOString().split('T')[0],
       dateStarted: dateStarted || undefined,
@@ -129,7 +140,7 @@ export function AddMediaDialog({ onAdd, boards, customGenres, customMediaTypes, 
     // Reset form
     setTitle('');
     setType('movie');
-    setStatus('want-to-watch');
+    setStatus('not-started');
     setSelectedGenres([]);
     setImageUpload('');
     setRating(0);
@@ -184,152 +195,8 @@ export function AddMediaDialog({ onAdd, boards, customGenres, customMediaTypes, 
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="type">Media Type *</Label>
-              <Select value={type} onValueChange={handleMediaTypeChange}>
-                <SelectTrigger id="type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__ADD_NEW__" className="text-primary">
-                    + Add New Media Type
-                  </SelectItem>
-                  {allMediaTypes.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t === 'tv' ? 'TV Show' : t.charAt(0).toUpperCase() + t.slice(1)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="status">Status *</Label>
-              <Select value={status} onValueChange={(value) => setStatus(value as WatchStatus)}>
-                <SelectTrigger id="status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {watchStatuses.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
           <div className="space-y-2">
-            <Label>Genres</Label>
-            <Select onValueChange={(value) => handleAddGenre(value as Genre)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select genres" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__ADD_NEW__" className="text-primary">
-                  + Add New Genre
-                </SelectItem>
-                {allGenres.map((g) => (
-                  <SelectItem key={g} value={g}>
-                    {g}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {selectedGenres.map((genre) => (
-                <Badge key={genre} variant="secondary" className="gap-1">
-                  {genre}
-                  <X 
-                    className="w-3 h-3 cursor-pointer" 
-                    onClick={() => handleRemoveGenre(genre)}
-                  />
-                </Badge>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="date-started">Start Date (Optional)</Label>
-              <Input
-                id="date-started"
-                type="date"
-                value={dateStarted}
-                onChange={(e) => setDateStarted(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="date-completed">Completed Date (Optional)</Label>
-              <Input
-                id="date-completed"
-                type="date"
-                value={dateCompleted}
-                onChange={(e) => setDateCompleted(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Image</Label>
-            <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                id="image-upload"
-              />
-              <label htmlFor="image-upload" className="cursor-pointer block">
-                {imageUpload ? (
-                  <div>
-                    <img 
-                      src={imageUpload} 
-                      alt="Preview" 
-                      className="max-h-32 mx-auto rounded mb-2"
-                    />
-                    <p className="text-sm text-muted-foreground">Click to change image</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                    <div>
-                      <p className="text-sm">Click to upload an image</p>
-                      <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB</p>
-                    </div>
-                  </div>
-                )}
-              </label>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Rating</Label>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={() => setRating(star === rating ? 0 : star)}
-                  className="focus:outline-none transition-transform hover:scale-110"
-                >
-                  <Star
-                    className={`w-8 h-8 ${
-                      star <= rating
-                        ? 'fill-yellow-400 text-yellow-400'
-                        : 'text-gray-300'
-                    }`}
-                  />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Add to Boards</Label>
+            <Label>Add to Boards *</Label>
             <Popover open={boardSearchOpen} onOpenChange={setBoardSearchOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -344,8 +211,8 @@ export function AddMediaDialog({ onAdd, boards, customGenres, customMediaTypes, 
               </PopoverTrigger>
               <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                 <Command>
-                  <CommandInput 
-                    placeholder="Search boards..." 
+                  <CommandInput
+                    placeholder="Search boards..."
                     value={boardSearchQuery}
                     onValueChange={setBoardSearchQuery}
                   />
@@ -386,17 +253,165 @@ export function AddMediaDialog({ onAdd, boards, customGenres, customMediaTypes, 
                   return board ? (
                     <Badge key={board.id} variant="secondary" className="gap-1">
                       {board.name}
-                      <X
-                        className="w-3 h-3 cursor-pointer"
-                        onClick={() =>
-                          setSelectedBoards(selectedBoards.filter((id) => id !== boardId))
-                        }
-                      />
+                      <button
+                        type="button"
+                        className="ml-1 rounded-full hover:bg-black/10 focus:outline-none"
+                        onClick={(e) => { e.stopPropagation(); setSelectedBoards(selectedBoards.filter((id) => id !== boardId)); }}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </Badge>
                   ) : null;
                 })}
               </div>
             )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="type">Media Type</Label>
+              <Select value={type} onValueChange={handleMediaTypeChange}>
+                <SelectTrigger id="type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__ADD_NEW__" className="text-primary">
+                    + Add New Media Type
+                  </SelectItem>
+                  {allMediaTypes.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t === 'tv' ? 'TV Show' : t.charAt(0).toUpperCase() + t.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select value={status} onValueChange={(value) => setStatus(value as WatchStatus)}>
+                <SelectTrigger id="status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {watchStatuses.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Genres</Label>
+            <Select onValueChange={(value) => handleAddGenre(value as Genre)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select genres" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__ADD_NEW__" className="text-primary">
+                  + Add New Genre
+                </SelectItem>
+                {allGenres.map((g) => (
+                  <SelectItem key={g} value={g}>
+                    {g}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {selectedGenres.map((genre) => (
+                <Badge key={genre} variant="secondary" className="gap-1">
+                  {genre}
+                  <button
+                    type="button"
+                    className="ml-1 rounded-full hover:bg-black/10 focus:outline-none"
+                    onClick={(e) => { e.stopPropagation(); handleRemoveGenre(genre); }}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="date-started">Start Date</Label>
+              <Input
+                id="date-started"
+                type="date"
+                value={dateStarted}
+                onChange={(e) => setDateStarted(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="date-completed">Completed Date</Label>
+              <Input
+                id="date-completed"
+                type="date"
+                value={dateCompleted}
+                onChange={(e) => setDateCompleted(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Image</Label>
+            <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                id="image-upload"
+              />
+              <label htmlFor="image-upload" className="cursor-pointer block">
+                {imageUpload ? (
+                  <div>
+                    <img
+                      src={imageUpload}
+                      alt="Preview"
+                      className="max-h-32 mx-auto rounded mb-2"
+                    />
+                    <p className="text-sm text-muted-foreground">Click to change image</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
+                    <div>
+                      <p className="text-sm">Click to upload an image</p>
+                      <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB</p>
+                    </div>
+                  </div>
+                )}
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Rating</Label>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRating(star === rating ? 0 : star)}
+                  className="focus:outline-none transition-transform hover:scale-110"
+                >
+                  <Star
+                    className={`w-8 h-8 ${
+                      star <= rating
+                        ? 'fill-yellow-400 text-yellow-400'
+                        : 'text-gray-300'
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -415,7 +430,7 @@ export function AddMediaDialog({ onAdd, boards, customGenres, customMediaTypes, 
           <Button variant="outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!title}>
+          <Button onClick={handleSubmit} disabled={!title || selectedBoards.length === 0}>
             Add Media
           </Button>
         </div>

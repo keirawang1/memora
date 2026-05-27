@@ -1,6 +1,7 @@
 import type { MediaItem } from '../types/media';
 import { Badge } from './ui/badge';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { Image } from 'lucide-react';
 
 interface MediaCardProps {
   media: MediaItem;
@@ -15,11 +16,17 @@ export function MediaCard({ media, onClick, noHover = false }: MediaCardProps) {
       onClick={onClick}
     >
       <div className="aspect-square relative rounded-lg overflow-hidden mb-2">
-        <ImageWithFallback
-          src={media.imageUrl}
-          alt={media.title}
-          className="w-full h-full object-cover"
-        />
+        {media.imageUrl ? (
+          <ImageWithFallback
+            src={media.imageUrl}
+            alt={media.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted/50">
+            <Image className="w-12 h-12 text-muted-foreground/40" />
+          </div>
+        )}
       </div>
       
       <div>

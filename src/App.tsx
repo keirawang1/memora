@@ -53,17 +53,11 @@ function App() {
     
     // Add media to appropriate default boards based on status
     const allBoard = boards.find(board => board.name === 'All');
-    const watchlistBoard = boards.find(board => board.name === 'Watchlist');
     const boardIdsToUpdate = new Set(boardIds || []);
     
     // Add to "All" board if watched, watching, or dropped
-    if (allBoard && ['watched', 'watching', 'dropped'].includes(newMedia.status)) {
+    if (allBoard && ['completed', 'ongoing', 'dropped'].includes(newMedia.status)) {
       boardIdsToUpdate.add(allBoard.id);
-    }
-    
-    // Add to "Watchlist" board if want-to-watch
-    if (watchlistBoard && newMedia.status === 'want-to-watch') {
-      boardIdsToUpdate.add(watchlistBoard.id);
     }
     
     if (boardIdsToUpdate.size > 0) {
@@ -71,7 +65,8 @@ function App() {
         if (boardIdsToUpdate.has(board.id)) {
           return {
             ...board,
-            mediaIds: [...board.mediaIds, newMedia.id]
+            mediaIds: [...board.mediaIds, newMedia.id],
+            coverImage: board.coverImage || newMedia.imageUrl || board.coverImage,
           };
         }
         return board;
@@ -182,7 +177,6 @@ function App() {
 
   const handleAccentColorChange = (color: string) => {
     setAccentColor(color);
-    toast.success(`Accent color updated!`);
   };
 
   const handleUpdateProfile = (data: { displayName: string; bio: string; avatar?: string }) => {
@@ -210,7 +204,7 @@ function App() {
     const typeCount: Record<string, number> = {};
     
     mediaItems.forEach(item => {
-      if (item.status === 'watched') {
+      if (item.status === 'completed') {
         const type = item.type.toLowerCase();
         typeCount[type] = (typeCount[type] || 0) + 1;
       }
@@ -317,8 +311,8 @@ function App() {
           <TabsContent value="library" className="mt-6">
             {selectedBoard ? (
               <BoardDetailPage
-                board={selectedBoard}
-                mediaItems={mediaItems.filter(item => selectedBoard.mediaIds.includes(item.id))}
+                board={boards.find(b => b.id === selectedBoard.id) ?? selectedBoard}
+                mediaItems={mediaItems.filter(item => (boards.find(b => b.id === selectedBoard.id) ?? selectedBoard).mediaIds.includes(item.id))}
                 onBack={handleBackToLibrary}
                 onMediaClick={handleMediaClick}
                 onUpdateBoard={handleUpdateBoard}
@@ -358,9 +352,10 @@ function App() {
         )}
       </div>
 
-      <AddMediaDialog 
-        onAdd={handleAddMedia} 
+      <AddMediaDialog
+        onAdd={handleAddMedia}
         boards={boards}
+        currentBoardId={selectedBoard?.id}
         customGenres={customGenres}
         customMediaTypes={customMediaTypes}
         onAddCustomGenre={handleAddCustomGenre}

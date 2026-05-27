@@ -35,7 +35,7 @@ interface MediaDetailDialogProps {
 }
 
 const defaultMediaTypes: string[] = ['movie', 'tv', 'anime', 'comic', 'book'];
-const watchStatuses: WatchStatus[] = ['watched', 'watching', 'want-to-watch', 'dropped'];
+const watchStatuses: WatchStatus[] = ['completed', 'ongoing', 'not-started', 'dropped'];
 const defaultGenres: string[] = ['Action', 'Comedy', 'Drama', 'Sci-Fi', 'Fantasy', 'Horror', 'Romance', 'Thriller', 'Documentary', 'Animation'];
 
 export function MediaDetailDialog({ 
@@ -58,7 +58,7 @@ export function MediaDetailDialog({
   // Edit form state
   const [editTitle, setEditTitle] = useState('');
   const [editType, setEditType] = useState<MediaType>('movie');
-  const [editStatus, setEditStatus] = useState<WatchStatus>('want-to-watch');
+  const [editStatus, setEditStatus] = useState<WatchStatus>('not-started');
   const [editGenres, setEditGenres] = useState<Genre[]>([]);
   const [editRating, setEditRating] = useState(0);
   const [editImageUpload, setEditImageUpload] = useState('');
@@ -220,16 +220,16 @@ export function MediaDetailDialog({
   };
 
   const statusColors = {
-    'watched': 'bg-green-500',
-    'watching': 'bg-blue-500',
-    'want-to-watch': 'bg-yellow-500',
+    'completed': 'bg-green-500',
+    'ongoing': 'bg-blue-500',
+    'not-started': 'bg-yellow-500',
     'dropped': 'bg-red-500',
   };
 
   const statusLabels = {
-    'watched': 'Completed',
-    'watching': 'In Progress',
-    'want-to-watch': 'Want to Watch',
+    'completed': 'Completed',
+    'ongoing': 'In Progress',
+    'not-started': 'Want to Watch',
     'dropped': 'Dropped',
   };
 

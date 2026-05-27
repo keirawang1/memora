@@ -55,7 +55,7 @@ export function ProfilePage({ user, stats, mediaItems, onUpdateProfile }: Profil
 
   // Genre distribution
   const genreData = mediaItems
-    .filter(item => item.status === 'watched')
+    .filter(item => item.status === 'completed')
     .flatMap(item => item.genre)
     .reduce((acc, genre) => {
       acc[genre] = (acc[genre] || 0) + 1;
@@ -100,17 +100,17 @@ export function ProfilePage({ user, stats, mediaItems, onUpdateProfile }: Profil
   const statusData = [
     {
       name: 'Completed',
-      value: mediaItems.filter(i => i.status === 'watched').length,
+      value: mediaItems.filter(i => i.status === 'completed').length,
       color: '#22c55e',
     },
     {
       name: 'In Progress',
-      value: mediaItems.filter(i => i.status === 'watching').length,
+      value: mediaItems.filter(i => i.status === 'ongoing').length,
       color: '#3b82f6',
     },
     {
       name: 'Want to Watch',
-      value: mediaItems.filter(i => i.status === 'want-to-watch').length,
+      value: mediaItems.filter(i => i.status === 'not-started').length,
       color: '#eab308',
     },
   ].filter(item => item.value > 0);
@@ -156,7 +156,7 @@ export function ProfilePage({ user, stats, mediaItems, onUpdateProfile }: Profil
       </Card>
 
       <div>
-        <h2 className="mb-4">Media Statistics</h2>
+        <h2 className="mb-4">Analytics</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {statCards.map((stat) => {
             const Icon = stat.icon;
@@ -178,7 +178,6 @@ export function ProfilePage({ user, stats, mediaItems, onUpdateProfile }: Profil
       </div>
 
       <div>
-        <h2 className="mb-4">Analytics</h2>
         <div className="grid grid-cols-1 gap-4 mb-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -187,10 +186,6 @@ export function ProfilePage({ user, stats, mediaItems, onUpdateProfile }: Profil
             </CardHeader>
             <CardContent>
               <div className="text-2xl">{stats.totalWatched}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                <TrendingUp className="w-3 h-3 inline mr-1 text-green-500" />
-                +12% from last month
-              </p>
             </CardContent>
           </Card>
         </div>

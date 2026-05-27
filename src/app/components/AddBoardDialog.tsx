@@ -63,7 +63,7 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
             <Label htmlFor="title">Board Name *</Label>
             <Input
               id="title"
-              placeholder="e.g., Favorite Fantasy, November 2024"
+              placeholder="Name your board"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -103,7 +103,7 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description (Optional)</Label>
+            <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
               placeholder="Add a description for this board..."

@@ -1,6 +1,6 @@
 import type { Board } from '../types/media';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-import { Plus } from 'lucide-react';
+import { Image, Plus } from 'lucide-react';
 
 interface BoardCardProps {
   board: Board;
@@ -9,7 +9,7 @@ interface BoardCardProps {
 }
 
 export function BoardCard({ board, itemCount, onClick }: BoardCardProps) {
-  const isEmptyWatchlist = board.name === 'Watchlist' && itemCount === 0;
+  const isEmpty = itemCount === 0;
   
   return (
     <div
@@ -17,16 +17,20 @@ export function BoardCard({ board, itemCount, onClick }: BoardCardProps) {
       onClick={onClick}
     >
       <div className="aspect-square relative bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg overflow-hidden mb-2">
-        {isEmptyWatchlist ? (
+        {isEmpty ? (
           <div className="w-full h-full flex items-center justify-center bg-muted/50">
             <Plus className="w-12 h-12 text-muted-foreground/40" />
           </div>
-        ) : (
+        ) : board.coverImage ? (
           <ImageWithFallback
-            src={board.coverImage || ''}
+            src={board.coverImage}
             alt={board.name}
             className="w-full h-full object-cover"
           />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted/50">
+            <Image className="w-12 h-12 text-muted-foreground/40" />
+          </div>
         )}
       </div>
       
