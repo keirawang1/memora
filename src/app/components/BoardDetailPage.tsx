@@ -207,12 +207,13 @@ export function BoardDetailPage({
 
               <div className="flex items-center justify-between pt-2 border-t">
                 <div className="space-y-0.5">
-                  <Label>Public Board</Label>
+                  <Label htmlFor="edit-board-public">Public Board</Label>
                   <div className="text-sm text-muted-foreground">
                     Allow others to see this board
                   </div>
                 </div>
                 <Switch
+                  id="edit-board-public"
                   checked={isPublic}
                   onCheckedChange={setIsPublic}
                 />

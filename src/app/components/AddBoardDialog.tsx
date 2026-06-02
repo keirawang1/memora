@@ -5,6 +5,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Upload } from 'lucide-react';
+import { Switch } from './ui/switch';
 
 interface AddBoardDialogProps {
   open: boolean;
@@ -16,6 +17,7 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
   const [title, setTitle] = useState('');
   const [imageUpload, setImageUpload] = useState<string>('');
   const [description, setDescription] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -33,7 +35,7 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
       id: `board-${Date.now()}`,
       name: title,
       mediaIds: [],
-      isPublic: false,
+      isPublic,
       coverImage: imageUpload || '',
       createdAt: new Date().toISOString().split('T')[0],
       description,
@@ -45,6 +47,7 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
     setTitle('');
     setImageUpload('');
     setDescription('');
+    setIsPublic(false);
     onOpenChange(false);
   };
 
@@ -110,6 +113,20 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="board-public">Public Board</Label>
+              <div className="text-sm text-muted-foreground">
+                Allow others to see this board
+              </div>
+            </div>
+            <Switch
+              id="board-public"
+              checked={isPublic}
+              onCheckedChange={setIsPublic}
             />
           </div>
         </div>
