@@ -6,11 +6,12 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Upload } from 'lucide-react';
 import { Switch } from './ui/switch';
+import type { CreateBoardInput } from '../supabase/boards';
 
 interface AddBoardDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (board: any) => void;
+  onAdd: (input: CreateBoardInput) => Promise<void>;
 }
 
 export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProps) {
@@ -18,6 +19,7 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
   const [imageUpload, setImageUpload] = useState<string>('');
   const [description, setDescription] = useState('');
   const [isPublic, setIsPublic] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -30,25 +32,24 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
     }
   };
 
-  const handleSubmit = () => {
-    const newBoard = {
-      id: `board-${Date.now()}`,
-      name: title,
-      mediaIds: [],
-      isPublic,
-      coverImage: imageUpload || '',
-      createdAt: new Date().toISOString().split('T')[0],
-      description,
-    };
-    
-    onAdd(newBoard);
-    
-    // Reset form
-    setTitle('');
-    setImageUpload('');
-    setDescription('');
-    setIsPublic(false);
-    onOpenChange(false);
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      await onAdd({
+        name: title,
+        description,
+        isPublic,
+        coverImageDataUrl: imageUpload || undefined,
+      });
+
+      setTitle('');
+      setImageUpload('');
+      setDescription('');
+      setIsPublic(false);
+      onOpenChange(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -135,8 +136,8 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!title}>
-            Create Board
+          <Button onClick={handleSubmit} disabled={!title || isSubmitting}>
+            {isSubmitting ? 'Creating...' : 'Create Board'}
           </Button>
         </div>
       </DialogContent>

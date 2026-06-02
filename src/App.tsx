@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './app/components/ui/tabs';
 import { LibraryPage } from './app/components/LibraryPage';
 import { BoardDetailPage } from './app/components/BoardDetailPage';
@@ -16,10 +16,14 @@ import {
 } from './app/data/mockData';
 import { getDefaultBoards, createDefaultUser } from './app/data/defaults';
 import type { MediaItem, Friend, Board, UserStats } from './app/types/media';
-import { Library, User, Users, Sparkles, Settings } from 'lucide-react';
+import { Library, User, Users, Sparkles, Settings, LogOut } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './app/components/ui/dropdown-menu';
 import logoImage from './assets/logo.png';
+import { supabase } from './app/supabase/client';
+import { createBoard, fetchBoards } from './app/supabase/boards';
+import { ensureUserProfile, getUserProfile } from './app/supabase/users';
+import { AuthPage } from './app/components/AuthPage';
 
 function App() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -47,18 +51,105 @@ function App() {
   // Custom genres and media types
   const [customGenres, setCustomGenres] = useState<string[]>([]);
   const [customMediaTypes, setCustomMediaTypes] = useState<string[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+
+  const loadBoardsForUser = async () => {
+    try {
+      const fetchedBoards = await fetchBoards();
+      if (fetchedBoards.length > 0) {
+        setBoards(fetchedBoards);
+      }
+    } catch {
+      // Keep local default boards if fetch fails
+    }
+  };
+
+  const handleAuthSuccess = (
+    userId: string,
+    username: string,
+    displayName: string,
+    email: string,
+    _accessToken: string,
+    avatar?: string,
+  ) => {
+    setUser({
+      id: userId,
+      username,
+      displayName,
+      email,
+      avatar,
+      bio: '',
+    });
+    setIsAuthenticated(true);
+    void loadBoardsForUser();
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setIsAuthenticated(false);
+    setBoards(getDefaultBoards());
+    setUser(createDefaultUser());
+    setShowProfile(false);
+    setSelectedBoard(null);
+    toast.info('Signed out');
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const restoreSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session?.user && mounted) {
+        try {
+          const profile =
+            (await getUserProfile(session.user.id)) ??
+            (await ensureUserProfile(
+              session.user.id,
+              session.user.email ?? '',
+            ));
+
+          handleAuthSuccess(
+            session.user.id,
+            profile.username,
+            profile.displayName,
+            profile.email,
+            session.access_token,
+          );
+        } catch {
+          if (mounted) setIsAuthenticated(false);
+        }
+      }
+
+      if (mounted) setAuthChecking(false);
+    };
+
+    void restoreSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, _session) => {
+        if (!mounted) return;
+
+        if (event === 'SIGNED_OUT') {
+          setIsAuthenticated(false);
+          setBoards(getDefaultBoards());
+          setUser(createDefaultUser());
+        }
+      },
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const handleAddMedia = (newMedia: MediaItem, boardIds?: string[]) => {
     setMediaItems([...mediaItems, newMedia]);
     
     // Add media to appropriate default boards based on status
-    const allBoard = boards.find(board => board.name === 'All');
     const boardIdsToUpdate = new Set(boardIds || []);
-    
-    // Add to "All" board if watched, watching, or dropped
-    if (allBoard && ['completed', 'ongoing', 'dropped'].includes(newMedia.status)) {
-      boardIdsToUpdate.add(allBoard.id);
-    }
     
     if (boardIdsToUpdate.size > 0) {
       setBoards(boards.map(board => {
@@ -76,9 +167,16 @@ function App() {
     toast.success('Media added to your library!');
   };
 
-  const handleAddBoard = (newBoard: Board) => {
-    setBoards([...boards, newBoard]);
-    toast.success('Board created successfully!');
+  const handleAddBoard = async (input: Parameters<typeof createBoard>[0]) => {
+    try {
+      const newBoard = await createBoard(input);
+      setBoards((prev) => [...prev, newBoard]);
+      toast.success('Board created successfully!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create board';
+      toast.error(message);
+      throw error;
+    }
   };
 
   const handleBoardClick = (board: Board) => {
@@ -224,6 +322,24 @@ function App() {
     };
   }, [mediaItems]);
 
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Toaster position="top-center" richColors />
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <Toaster position="top-center" richColors />
+        <AuthPage onAuthSuccess={handleAuthSuccess} />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Toaster position="top-center" richColors />
@@ -267,6 +383,11 @@ function App() {
                   <DropdownMenuItem onClick={() => setSettingsDialogOpen(true)}>
                     <Settings className="w-4 h-4 mr-2" />
                     Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
