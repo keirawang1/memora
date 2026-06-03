@@ -21,6 +21,7 @@ export interface Board {
   id: string;
   name: string;
   mediaIds: string[];
+  type?: string;
   isPublic: boolean;
   isSystem?: boolean;
   coverImage?: string;

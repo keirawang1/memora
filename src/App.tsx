@@ -332,14 +332,12 @@ function App() {
 
   const handleUpdateBoard = async (
     boardId: string,
-    updates: Partial<Board> & { mediaType?: string; coverImageDataUrl?: string },
+    updates: Partial<Board> & { coverImageDataUrl?: string },
   ) => {
     try {
-      const { mediaType: _mediaType, coverImageDataUrl, ...boardUpdates } = updates;
+      const { coverImageDataUrl, ...boardUpdates } = updates;
       const updated = await updateBoard(boardId, {
-        name: boardUpdates.name,
-        description: boardUpdates.description,
-        isPublic: boardUpdates.isPublic,
+        ...boardUpdates,
         coverImageDataUrl,
       });
       setBoards((prev) => prev.map((board) => (board.id === boardId ? updated : board)));
@@ -615,14 +613,16 @@ function App() {
                 onMediaClick={handleMediaClick}
                 onUpdateBoard={handleUpdateBoard}
                 onDeleteBoard={handleDeleteBoard}
+                customMediaTypes={customMediaTypes}
+                customGenres={customGenres}
               />
             ) : (
               <LibraryPage
                 boards={visibleBoards}
-                mediaItems={mediaItems}
                 onBoardClick={handleBoardClick}
                 onCreateBoard={handleCreateBoard}
                 accentColor={accentColor}
+                customMediaTypes={customMediaTypes}
               />
             )}
           </TabsContent>
@@ -663,6 +663,7 @@ function App() {
         open={addBoardDialogOpen}
         onOpenChange={setAddBoardDialogOpen}
         onAdd={handleAddBoard}
+        customMediaTypes={customMediaTypes}
       />
 
       <MediaDetailDialog

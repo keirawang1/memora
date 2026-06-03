@@ -1,18 +1,27 @@
-import { useState } from 'react';
-import type { Board, MediaItem } from '../types/media';
+import { useMemo, useState } from 'react';
+import type { Board, MediaItem, WatchStatus } from '../types/media';
 import { isAllBoard } from '../data/allBoard';
 import { MediaCard } from './MediaCard';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
-import { ArrowLeft, Globe, Lock, Pencil, Search, Trash2 } from 'lucide-react';
+import { TagFilterDropdown } from './TagFilterDropdown';
+import { MediaTypeSelectDropdown } from './MediaTypeSelectDropdown';
+import { ArrowLeft, Globe, Lock, Pencil, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Upload } from 'lucide-react';
+import {
+  BOARD_TYPE_MIXED,
+  DEFAULT_GENRES,
+  DEFAULT_MEDIA_TYPES,
+  formatMediaTypeLabel,
+  formatWatchStatusLabel,
+  getBoardMediaTypeOptions,
+} from '../data/mediaOptions';
 
 interface BoardDetailPageProps {
   board: Board;
@@ -21,10 +30,14 @@ interface BoardDetailPageProps {
   onMediaClick: (media: MediaItem) => void;
   onUpdateBoard: (
     boardId: string,
-    updates: Partial<Board> & { mediaType?: string; coverImageDataUrl?: string },
+    updates: Partial<Board> & { coverImageDataUrl?: string },
   ) => void | Promise<void>;
+  customMediaTypes: string[];
+  customGenres: string[];
   onDeleteBoard?: (boardId: string) => void;
 }
+
+const watchStatuses: WatchStatus[] = ['completed', 'ongoing', 'not-started', 'dropped'];
 
 export function BoardDetailPage({ 
   board, 
@@ -32,21 +45,50 @@ export function BoardDetailPage({
   onBack, 
   onMediaClick,
   onUpdateBoard,
-  onDeleteBoard 
+  onDeleteBoard,
+  customMediaTypes,
+  customGenres,
 }: BoardDetailPageProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isPublic, setIsPublic] = useState(board.isPublic);
   const [boardName, setBoardName] = useState(board.name);
   const [boardDescription, setBoardDescription] = useState(board.description || '');
-  const [boardMediaType, setBoardMediaType] = useState((board as any).mediaType || 'mixed');
+  const [boardMediaType, setBoardMediaType] = useState(board.type || BOARD_TYPE_MIXED);
+  const mediaTypeOptions = getBoardMediaTypeOptions(customMediaTypes);
   const [boardImageUpload, setBoardImageUpload] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [genreFilters, setGenreFilters] = useState<string[]>([]);
+  const [typeFilters, setTypeFilters] = useState<string[]>([]);
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const readOnlyBoard = isAllBoard(board);
 
-  const filteredMediaItems = mediaItems.filter(item =>
-    item.title.toLowerCase().includes(searchQuery.toLowerCase())
+  const allGenres = useMemo(
+    () => [...DEFAULT_GENRES, ...customGenres],
+    [customGenres],
   );
+
+  const allMediaTypes = useMemo(
+    () => [...DEFAULT_MEDIA_TYPES, ...customMediaTypes],
+    [customMediaTypes],
+  );
+
+  const hasActiveFilters =
+    genreFilters.length > 0 || typeFilters.length > 0 || statusFilters.length > 0;
+
+  const filteredMediaItems = mediaItems.filter((item) => {
+    const matchesSearch = item.title
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
+    const matchesGenre =
+      genreFilters.length === 0 ||
+      item.genre.some((g) => genreFilters.includes(g));
+    const matchesType =
+      typeFilters.length === 0 || typeFilters.includes(item.type);
+    const matchesStatus =
+      statusFilters.length === 0 || statusFilters.includes(item.status);
+    return matchesSearch && matchesGenre && matchesType && matchesStatus;
+  });
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -64,7 +106,7 @@ export function BoardDetailPage({
       isPublic,
       name: boardName,
       description: boardDescription,
-      mediaType: boardMediaType,
+      type: boardMediaType,
       ...(boardImageUpload && { coverImageDataUrl: boardImageUpload }),
     });
     setEditDialogOpen(false);
@@ -109,12 +151,32 @@ export function BoardDetailPage({
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Input
             placeholder="Search media..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1"
+            className="flex-1 min-w-[200px]"
+          />
+          <TagFilterDropdown
+            options={allGenres}
+            selected={genreFilters}
+            onChange={setGenreFilters}
+            placeholder="Genre"
+          />
+          <TagFilterDropdown
+            options={allMediaTypes}
+            selected={typeFilters}
+            onChange={setTypeFilters}
+            placeholder="Media type"
+            formatLabel={formatMediaTypeLabel}
+          />
+          <TagFilterDropdown
+            options={watchStatuses}
+            selected={statusFilters}
+            onChange={setStatusFilters}
+            placeholder="Status"
+            formatLabel={formatWatchStatusLabel}
           />
 
           {!readOnlyBoard && (
@@ -145,18 +207,12 @@ export function BoardDetailPage({
 
               <div className="space-y-2">
                 <Label htmlFor="boardMediaType">Media Type</Label>
-                <Select value={boardMediaType} onValueChange={setBoardMediaType}>
-                  <SelectTrigger id="boardMediaType">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {['movie', 'tv', 'anime', 'comic', 'book', 'mixed'].map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type === 'tv' ? 'TV Show' : type.charAt(0).toUpperCase() + type.slice(1)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <MediaTypeSelectDropdown
+                  id="boardMediaType"
+                  options={mediaTypeOptions}
+                  value={boardMediaType}
+                  onChange={setBoardMediaType}
+                />
               </div>
 
               <div className="space-y-2">
@@ -276,7 +332,9 @@ export function BoardDetailPage({
       {filteredMediaItems.length === 0 ? (
         <div className="text-center py-12 border-2 border-dashed rounded-lg">
           <p className="text-muted-foreground">
-            {searchQuery ? 'No media found matching your search.' : 'This board is empty. Add some media to get started!'}
+            {searchQuery || hasActiveFilters
+              ? 'No media matches your search or filters.'
+              : 'This board is empty. Add some media to get started!'}
           </p>
         </div>
       ) : (

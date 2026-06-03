@@ -11,6 +11,7 @@ export interface BoardInput {
   name: string;
   description: string;
   isPublic: boolean;
+  type?: string;
   coverImageDataUrl?: string;
 }
 
@@ -18,6 +19,7 @@ interface DbBoard {
   board_id: string;
   name: string;
   description: string | null;
+  type?: string | null;
   is_public: boolean;
   is_system?: boolean;
   cover_image: string | null;
@@ -27,7 +29,7 @@ interface DbBoard {
 }
 
 const BOARD_SELECT =
-  'board_id, name, description, is_public, is_system, cover_image, media, created_at, user_id';
+  'board_id, name, description, type, is_public, is_system, cover_image, media, created_at, user_id';
 
 const BOARD_SELECT_FALLBACK =
   'board_id, name, description, is_public, cover_image, media, created_at, user_id';
@@ -37,6 +39,7 @@ function mapDbBoardToBoard(row: DbBoard): Board {
     id: row.board_id,
     name: row.name,
     mediaIds: row.media ?? [],
+    type: row.type ?? undefined,
     isPublic: row.is_public,
     isSystem: row.is_system === true || row.name === ALL_BOARD_NAME,
     coverImage: row.cover_image ?? '',
@@ -141,6 +144,7 @@ export async function createBoard(input: BoardInput): Promise<Board> {
   const rowPayload = {
     name: input.name.trim(),
     description: input.description || null,
+    type: input.type?.trim() || null,
     is_public: input.isPublic,
     is_system: false,
     cover_image: coverImageUrl,
@@ -182,7 +186,7 @@ export async function createBoard(input: BoardInput): Promise<Board> {
 
 export async function updateBoard(
   boardId: string,
-  input: BoardInput,
+  input: Partial<BoardInput>,
 ): Promise<Board> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -210,6 +214,7 @@ export async function updateBoard(
 
   if (input.name !== undefined) payload.name = input.name;
   if (input.description !== undefined) payload.description = input.description || null;
+  if (input.type !== undefined) payload.type = input.type?.trim() || null;
   if (input.isPublic !== undefined) payload.is_public = input.isPublic;
 
   if (input.coverImageDataUrl) {

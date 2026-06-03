@@ -64,7 +64,7 @@ export async function getUserTagPreferences(
       .maybeSingle();
 
     if (fallback.error) throw fallback.error;
-    data = fallback.data;
+    data = fallback.data as Pick<DbUser, 'genres' | 'media_types' | 'show_all_board'> | null;
     error = null;
   }
 

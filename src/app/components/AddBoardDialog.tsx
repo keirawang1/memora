@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -6,20 +6,34 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Upload } from 'lucide-react';
 import { Switch } from './ui/switch';
+import { MediaTypeSelectDropdown } from './MediaTypeSelectDropdown';
 import type { CreateBoardInput } from '../supabase/boards';
+import { BOARD_TYPE_MIXED, getBoardMediaTypeOptions } from '../data/mediaOptions';
 
 interface AddBoardDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (input: CreateBoardInput) => Promise<void>;
+  customMediaTypes: string[];
 }
 
-export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProps) {
+export function AddBoardDialog({
+  open,
+  onOpenChange,
+  onAdd,
+  customMediaTypes,
+}: AddBoardDialogProps) {
   const [title, setTitle] = useState('');
+  const [boardType, setBoardType] = useState<string>(BOARD_TYPE_MIXED);
   const [imageUpload, setImageUpload] = useState<string>('');
   const [description, setDescription] = useState('');
   const [isPublic, setIsPublic] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const mediaTypeOptions = useMemo(
+    () => getBoardMediaTypeOptions(customMediaTypes),
+    [customMediaTypes],
+  );
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -38,11 +52,13 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
       await onAdd({
         name: title,
         description,
+        type: boardType,
         isPublic,
         coverImageDataUrl: imageUpload || undefined,
       });
 
       setTitle('');
+      setBoardType(BOARD_TYPE_MIXED);
       setImageUpload('');
       setDescription('');
       setIsPublic(false);
@@ -106,6 +122,16 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
                 )}
               </label>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="board-type">Media Type</Label>
+            <MediaTypeSelectDropdown
+              id="board-type"
+              options={mediaTypeOptions}
+              value={boardType}
+              onChange={setBoardType}
+            />
           </div>
 
           <div className="space-y-2">
