@@ -47,6 +47,8 @@ export function AddBoardDialog({ open, onOpenChange, onAdd }: AddBoardDialogProp
       setDescription('');
       setIsPublic(false);
       onOpenChange(false);
+    } catch {
+      // Error toast handled in App.handleAddBoard
     } finally {
       setIsSubmitting(false);
     }

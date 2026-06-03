@@ -87,6 +87,11 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
       if (error) throw error;
 
+      if (data.user && data.user.identities?.length === 0) {
+        toast.error('An account with this email already exists.');
+        return;
+      }
+
       if (data.session?.user) {
         await createUserProfileAfterSignup(data.session);
         toast.success('Account created successfully!');

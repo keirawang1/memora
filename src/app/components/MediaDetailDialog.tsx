@@ -7,48 +7,44 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { Star, Calendar, Tag, Trash2, Save, Pencil, X, Upload } from 'lucide-react';
-import type { MediaItem, MediaType, WatchStatus, Genre } from '../types/media';
-import { ImageWithFallback } from './figma/ImageWithFallback';
-
+import type { MediaItem, MediaType, WatchStatus, Genre, Board } from '../types/media';
+import { BoardMultiSelect } from './BoardMultiSelect';
+import { GenreSelectDropdown } from './GenreSelectDropdown';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from './ui/alert-dialog';
+  DEFAULT_GENRES,
+  DEFAULT_MEDIA_TYPES,
+  formatMediaTypeLabel,
+  getMediaBoardIds,
+} from '../data/mediaOptions';
 
 interface MediaDetailDialogProps {
   media: MediaItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  boards: Board[];
   onUpdateNotes?: (mediaId: string, notes: string) => void;
-  onUpdateMedia?: (mediaId: string, updates: Partial<MediaItem>) => void;
+  onUpdateMedia?: (
+    mediaId: string,
+    updates: Partial<MediaItem>,
+    boardIds?: string[],
+  ) => void;
   onDelete?: (mediaId: string) => void;
   customGenres: string[];
   customMediaTypes: string[];
-  onAddCustomGenre: (genre: string) => void;
-  onAddCustomMediaType: (type: string) => void;
 }
 
-const defaultMediaTypes: string[] = ['movie', 'tv', 'anime', 'comic', 'book'];
 const watchStatuses: WatchStatus[] = ['completed', 'ongoing', 'not-started', 'dropped'];
-const defaultGenres: string[] = ['Action', 'Comedy', 'Drama', 'Sci-Fi', 'Fantasy', 'Horror', 'Romance', 'Thriller', 'Documentary', 'Animation'];
 
-export function MediaDetailDialog({ 
-  media, 
-  open, 
+export function MediaDetailDialog({
+  media,
+  open,
   onOpenChange,
+  boards,
   onUpdateNotes,
   onUpdateMedia,
   onDelete,
   customGenres,
   customMediaTypes,
-  onAddCustomGenre,
-  onAddCustomMediaType
 }: MediaDetailDialogProps) {
   const [notes, setNotes] = useState(media?.notes || '');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -64,10 +60,7 @@ export function MediaDetailDialog({
   const [editImageUpload, setEditImageUpload] = useState('');
   const [editDateStarted, setEditDateStarted] = useState('');
   const [editDateCompleted, setEditDateCompleted] = useState('');
-  const [showAddGenreDialog, setShowAddGenreDialog] = useState(false);
-  const [showAddMediaTypeDialog, setShowAddMediaTypeDialog] = useState(false);
-  const [newGenreInput, setNewGenreInput] = useState('');
-  const [newMediaTypeInput, setNewMediaTypeInput] = useState('');
+  const [editSelectedBoards, setEditSelectedBoards] = useState<string[]>([]);
 
   useEffect(() => {
     if (media) {
@@ -81,8 +74,9 @@ export function MediaDetailDialog({
       setEditImageUpload('');
       setEditDateStarted(media.dateStarted || '');
       setEditDateCompleted(media.dateCompleted || '');
+      setEditSelectedBoards(getMediaBoardIds(media.id, boards));
     }
-  }, [media]);
+  }, [media, boards]);
 
   // Reset edit mode when dialog opens or media changes
   useEffect(() => {
@@ -92,13 +86,15 @@ export function MediaDetailDialog({
     }
   }, [open, media]);
 
-  const allGenres = useMemo(() => {
-    return [...defaultGenres, ...customGenres];
-  }, [customGenres]);
+  const allGenres = useMemo(
+    () => [...DEFAULT_GENRES, ...customGenres],
+    [customGenres],
+  );
 
-  const allMediaTypes = useMemo(() => {
-    return [...defaultMediaTypes, ...customMediaTypes];
-  }, [customMediaTypes]);
+  const allMediaTypes = useMemo(
+    () => [...DEFAULT_MEDIA_TYPES, ...customMediaTypes],
+    [customMediaTypes],
+  );
 
   const handleSaveNotes = () => {
     if (!media) return;
@@ -148,61 +144,27 @@ export function MediaDetailDialog({
     }
   };
 
-  const handleAddGenre = (genre: Genre) => {
-    if (genre === '__ADD_NEW__') {
-      setShowAddGenreDialog(true);
-      return;
-    }
-    if (!editGenres.includes(genre)) {
-      setEditGenres([...editGenres, genre]);
-    }
-  };
-
-  const handleConfirmAddGenre = () => {
-    const trimmedGenre = newGenreInput.trim();
-    if (trimmedGenre) {
-      onAddCustomGenre(trimmedGenre);
-      setEditGenres([...editGenres, trimmedGenre]);
-      setNewGenreInput('');
-      setShowAddGenreDialog(false);
-    }
-  };
-
   const handleRemoveGenre = (genre: Genre) => {
-    setEditGenres(editGenres.filter(g => g !== genre));
-  };
-
-  const handleMediaTypeChange = (value: string) => {
-    if (value === '__ADD_NEW__') {
-      setShowAddMediaTypeDialog(true);
-      return;
-    }
-    setEditType(value);
-  };
-
-  const handleConfirmAddMediaType = () => {
-    const trimmedType = newMediaTypeInput.trim();
-    if (trimmedType) {
-      onAddCustomMediaType(trimmedType);
-      setEditType(trimmedType);
-      setNewMediaTypeInput('');
-      setShowAddMediaTypeDialog(false);
-    }
+    setEditGenres(editGenres.filter((g) => g !== genre));
   };
 
   const handleSaveEdit = () => {
     if (!media) return;
-    onUpdateMedia?.(media.id, {
-      title: editTitle,
-      type: editType,
-      status: editStatus,
-      genre: editGenres,
-      rating: editRating > 0 ? editRating : undefined,
-      imageUrl: editImageUpload || media.imageUrl,
-      dateStarted: editDateStarted || undefined,
-      dateCompleted: editDateCompleted || undefined,
-    });
-    
+    onUpdateMedia?.(
+      media.id,
+      {
+        title: editTitle,
+        type: editType,
+        status: editStatus,
+        genre: editGenres,
+        rating: editRating > 0 ? editRating : undefined,
+        imageUrl: editImageUpload || media.imageUrl,
+        dateStarted: editDateStarted || undefined,
+        dateCompleted: editDateCompleted || undefined,
+      },
+      editSelectedBoards,
+    );
+
     setIsEditingMedia(false);
   };
 
@@ -216,6 +178,7 @@ export function MediaDetailDialog({
     setEditImageUpload('');
     setEditDateStarted(media.dateStarted || '');
     setEditDateCompleted(media.dateCompleted || '');
+    setEditSelectedBoards(getMediaBoardIds(media.id, boards));
     setIsEditingMedia(false);
   };
 
@@ -256,20 +219,24 @@ export function MediaDetailDialog({
               />
             </div>
 
+            <BoardMultiSelect
+              boards={boards}
+              selectedBoardIds={editSelectedBoards}
+              onChange={setEditSelectedBoards}
+              label="Boards"
+            />
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-type">Media Type *</Label>
-                <Select value={editType} onValueChange={handleMediaTypeChange}>
+                <Select value={editType} onValueChange={(value) => setEditType(value)}>
                   <SelectTrigger id="edit-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__ADD_NEW__" className="text-primary">
-                      + Add New Media Type
-                    </SelectItem>
                     {allMediaTypes.map((t) => (
                       <SelectItem key={t} value={t}>
-                        {t === 'tv' ? 'TV Show' : t.charAt(0).toUpperCase() + t.slice(1)}
+                        {formatMediaTypeLabel(t)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -295,21 +262,11 @@ export function MediaDetailDialog({
 
             <div className="space-y-2">
               <Label>Genres</Label>
-              <Select onValueChange={(value) => handleAddGenre(value as Genre)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select genres" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__ADD_NEW__" className="text-primary">
-                    + Add New Genre
-                  </SelectItem>
-                  {allGenres.map((g) => (
-                    <SelectItem key={g} value={g}>
-                      {g}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <GenreSelectDropdown
+                genres={allGenres}
+                selectedGenres={editGenres}
+                onChange={setEditGenres}
+              />
               <div className="flex flex-wrap gap-2 mt-2">
                 {editGenres.map((genre) => (
                   <Badge key={genre} variant="secondary" className="gap-1">
@@ -563,7 +520,12 @@ export function MediaDetailDialog({
             <div className="flex gap-2 pt-4 border-t">
               <Button
                 variant="outline"
-                onClick={() => setIsEditingMedia(true)}
+                onClick={() => {
+                  if (media) {
+                    setEditSelectedBoards(getMediaBoardIds(media.id, boards));
+                  }
+                  setIsEditingMedia(true);
+                }}
               >
                 <Pencil className="w-4 h-4 mr-2" />
                 Edit Media
@@ -586,65 +548,6 @@ export function MediaDetailDialog({
         )}
       </DialogContent>
 
-      {/* Add New Genre Dialog */}
-      <AlertDialog open={showAddGenreDialog} onOpenChange={setShowAddGenreDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Add New Genre</AlertDialogTitle>
-            <AlertDialogDescription>
-              Enter a name for your custom genre.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Input
-            placeholder="Genre name"
-            value={newGenreInput}
-            onChange={(e) => setNewGenreInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleConfirmAddGenre();
-              }
-            }}
-            autoFocus
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setNewGenreInput('')}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmAddGenre} disabled={!newGenreInput.trim()}>
-              Add Genre
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Add New Media Type Dialog */}
-      <AlertDialog open={showAddMediaTypeDialog} onOpenChange={setShowAddMediaTypeDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Add New Media Type</AlertDialogTitle>
-            <AlertDialogDescription>
-              Enter a name for your custom media type.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Input
-            placeholder="Media type name"
-            value={newMediaTypeInput}
-            onChange={(e) => setNewMediaTypeInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleConfirmAddMediaType();
-              }
-            }}
-            autoFocus
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setNewMediaTypeInput('')}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmAddMediaType} disabled={!newMediaTypeInput.trim()}>
-              Add Media Type
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Dialog>
   );
 }

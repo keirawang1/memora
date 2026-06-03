@@ -1,112 +1,66 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
-import { Plus, X, Upload, Star, Circle, CheckCircle2 } from 'lucide-react';
+import { Plus, X, Upload, Star } from 'lucide-react';
 import type { MediaType, WatchStatus, Genre, Board } from '../types/media';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { Check } from 'lucide-react';
+import { BoardMultiSelect } from './BoardMultiSelect';
+import { GenreSelectDropdown } from './GenreSelectDropdown';
+import { isAllBoard } from '../data/allBoard';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from './ui/alert-dialog';
+  DEFAULT_GENRES,
+  DEFAULT_MEDIA_TYPES,
+  formatMediaTypeLabel,
+} from '../data/mediaOptions';
 
 interface AddMediaDialogProps {
-  onAdd: (media: any, boardIds?: string[]) => void;
+  onAdd: (media: any, boardIds?: string[]) => void | Promise<void>;
   boards: Board[];
   currentBoardId?: string;
   customGenres: string[];
   customMediaTypes: string[];
-  onAddCustomGenre: (genre: string) => void;
-  onAddCustomMediaType: (type: string) => void;
   accentColor?: string;
 }
 
-const defaultMediaTypes: string[] = ['movie', 'tv', 'anime', 'comic', 'book'];
 const watchStatuses: WatchStatus[] = ['completed', 'ongoing', 'not-started', 'dropped'];
-const defaultGenres: string[] = ['Action', 'Comedy', 'Drama', 'Sci-Fi', 'Fantasy', 'Horror', 'Romance', 'Thriller', 'Historical', 'Mystery'];
 
-export function AddMediaDialog({ onAdd, boards, currentBoardId, customGenres, customMediaTypes, onAddCustomGenre, onAddCustomMediaType, accentColor = '#5C2B17' }: AddMediaDialogProps) {
+export function AddMediaDialog({
+  onAdd,
+  boards,
+  currentBoardId,
+  customGenres,
+  customMediaTypes,
+  accentColor = '#5C2B17',
+}: AddMediaDialogProps) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [type, setType] = useState<MediaType>('movie');
   const [status, setStatus] = useState<WatchStatus>('not-started');
   const [selectedGenres, setSelectedGenres] = useState<Genre[]>([]);
-  const [imageUpload, setImageUpload] = useState<string>('');
+  const [imageUpload, setImageUpload] = useState('');
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState('');
   const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
-  const [boardSearchOpen, setBoardSearchOpen] = useState(false);
-  const [boardSearchQuery, setBoardSearchQuery] = useState('');
-  const [customGenreInput, setCustomGenreInput] = useState('');
   const [dateStarted, setDateStarted] = useState('');
   const [dateCompleted, setDateCompleted] = useState('');
-  const [showAddGenreDialog, setShowAddGenreDialog] = useState(false);
-  const [showAddMediaTypeDialog, setShowAddMediaTypeDialog] = useState(false);
-  const [newGenreInput, setNewGenreInput] = useState('');
-  const [newMediaTypeInput, setNewMediaTypeInput] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Pre-select the board the user is currently viewing (excluding "All"), reset on close
   useEffect(() => {
     if (open) {
-      const isSelectable = currentBoardId && boards.find(b => b.id === currentBoardId && b.name !== 'All');
+      const isSelectable =
+        currentBoardId && boards.find((b) => b.id === currentBoardId && !isAllBoard(b));
       setSelectedBoards(isSelectable ? [currentBoardId] : []);
     } else {
       setSelectedBoards([]);
     }
   }, [open, currentBoardId, boards]);
 
-  const handleAddGenre = (genre: Genre) => {
-    if (genre === '__ADD_NEW__') {
-      setShowAddGenreDialog(true);
-      return;
-    }
-    if (!selectedGenres.includes(genre)) {
-      setSelectedGenres([...selectedGenres, genre]);
-    }
-  };
-
-  const handleConfirmAddGenre = () => {
-    const trimmedGenre = newGenreInput.trim();
-    if (trimmedGenre) {
-      onAddCustomGenre(trimmedGenre);
-      setSelectedGenres([...selectedGenres, trimmedGenre]);
-      setNewGenreInput('');
-      setShowAddGenreDialog(false);
-    }
-  };
-
   const handleRemoveGenre = (genre: Genre) => {
-    setSelectedGenres(selectedGenres.filter(g => g !== genre));
-  };
-
-  const handleMediaTypeChange = (value: string) => {
-    if (value === '__ADD_NEW__') {
-      setShowAddMediaTypeDialog(true);
-      return;
-    }
-    setType(value);
-  };
-
-  const handleConfirmAddMediaType = () => {
-    const trimmedType = newMediaTypeInput.trim();
-    if (trimmedType) {
-      onAddCustomMediaType(trimmedType);
-      setType(trimmedType);
-      setNewMediaTypeInput('');
-      setShowAddMediaTypeDialog(false);
-    }
+    setSelectedGenres(selectedGenres.filter((g) => g !== genre));
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,59 +74,58 @@ export function AddMediaDialog({ onAdd, boards, currentBoardId, customGenres, cu
     }
   };
 
-  const handleSubmit = () => {
-    const newMedia = {
-      id: `media-${Date.now()}`,
-      title,
-      type,
-      genre: selectedGenres,
-      status,
-      imageUrl: imageUpload || '',
-      rating: rating > 0 ? rating : undefined,
-      dateAdded: new Date().toISOString().split('T')[0],
-      dateStarted: dateStarted || undefined,
-      dateCompleted: dateCompleted || undefined,
-      notes,
-    };
-    
-    onAdd(newMedia, selectedBoards);
-    
-    // Reset form
-    setTitle('');
-    setType('movie');
-    setStatus('not-started');
-    setSelectedGenres([]);
-    setImageUpload('');
-    setRating(0);
-    setNotes('');
-    setSelectedBoards([]);
-    setBoardSearchQuery('');
-    setCustomGenreInput('');
-    setDateStarted('');
-    setDateCompleted('');
-    setOpen(false);
+  const handleSubmit = async () => {
+    if (!title.trim() || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await onAdd(
+        {
+          title,
+          type,
+          genre: selectedGenres,
+          status,
+          imageUrl: imageUpload || '',
+          rating: rating > 0 ? rating : undefined,
+          dateStarted: dateStarted || undefined,
+          dateCompleted: dateCompleted || undefined,
+          notes,
+        },
+        selectedBoards,
+      );
+
+      setTitle('');
+      setType('movie');
+      setStatus('not-started');
+      setSelectedGenres([]);
+      setImageUpload('');
+      setRating(0);
+      setNotes('');
+      setSelectedBoards([]);
+      setDateStarted('');
+      setDateCompleted('');
+      setOpen(false);
+    } catch {
+      // Error toast handled in App.handleAddMedia
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const filteredBoards = useMemo(() => {
-    const availableBoards = boards.filter(board => board.name !== 'All');
-    if (!boardSearchQuery) return availableBoards;
-    return availableBoards.filter(board =>
-      board.name.toLowerCase().includes(boardSearchQuery.toLowerCase())
-    );
-  }, [boards, boardSearchQuery]);
+  const allGenres = useMemo(
+    () => [...DEFAULT_GENRES, ...customGenres],
+    [customGenres],
+  );
 
-  const allGenres = useMemo(() => {
-    return [...defaultGenres, ...customGenres];
-  }, [customGenres]);
-
-  const allMediaTypes = useMemo(() => {
-    return [...defaultMediaTypes, ...customMediaTypes];
-  }, [customMediaTypes]);
+  const allMediaTypes = useMemo(
+    () => [...DEFAULT_MEDIA_TYPES, ...customMediaTypes],
+    [customMediaTypes],
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button 
+        <button
           className="rounded-full fixed bottom-6 right-6 h-14 w-14 shadow-lg z-50 hover:opacity-90 transition-opacity flex items-center justify-center"
           style={{ backgroundColor: accentColor }}
         >
@@ -183,7 +136,7 @@ export function AddMediaDialog({ onAdd, boards, currentBoardId, customGenres, cu
         <DialogHeader>
           <DialogTitle>Add New Media</DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="title">Title *</Label>
@@ -195,92 +148,25 @@ export function AddMediaDialog({ onAdd, boards, currentBoardId, customGenres, cu
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Add to Boards *</Label>
-            <Popover open={boardSearchOpen} onOpenChange={setBoardSearchOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  className="w-full justify-between"
-                >
-                  {selectedBoards.length > 0
-                    ? `${selectedBoards.length} board${selectedBoards.length > 1 ? 's' : ''} selected`
-                    : "Select boards..."}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                <Command>
-                  <CommandInput
-                    placeholder="Search boards..."
-                    value={boardSearchQuery}
-                    onValueChange={setBoardSearchQuery}
-                  />
-                  <CommandList>
-                    <CommandEmpty>No boards found.</CommandEmpty>
-                    <CommandGroup>
-                      {filteredBoards.map((board) => {
-                        const isSelected = selectedBoards.includes(board.id);
-                        return (
-                          <CommandItem
-                            key={board.id}
-                            onSelect={() => {
-                              setSelectedBoards(
-                                isSelected
-                                  ? selectedBoards.filter((id) => id !== board.id)
-                                  : [...selectedBoards, board.id]
-                              );
-                            }}
-                          >
-                            {isSelected ? (
-                              <CheckCircle2 className="mr-2 h-4 w-4 fill-primary text-primary" />
-                            ) : (
-                              <Circle className="mr-2 h-4 w-4 text-muted-foreground" />
-                            )}
-                            {board.name}
-                          </CommandItem>
-                        );
-                      })}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            {selectedBoards.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {selectedBoards.map((boardId) => {
-                  const board = boards.find((b) => b.id === boardId);
-                  return board ? (
-                    <Badge key={board.id} variant="secondary" className="gap-1">
-                      {board.name}
-                      <button
-                        type="button"
-                        className="ml-1 rounded-full hover:bg-black/10 focus:outline-none"
-                        onClick={(e) => { e.stopPropagation(); setSelectedBoards(selectedBoards.filter((id) => id !== boardId)); }}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ) : null;
-                })}
-              </div>
-            )}
-          </div>
+          <BoardMultiSelect
+            boards={boards}
+            selectedBoardIds={selectedBoards}
+            onChange={setSelectedBoards}
+            label="Add to Boards"
+            required
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="type">Media Type</Label>
-              <Select value={type} onValueChange={handleMediaTypeChange}>
+              <Select value={type} onValueChange={setType}>
                 <SelectTrigger id="type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__ADD_NEW__" className="text-primary">
-                    + Add New Media Type
-                  </SelectItem>
                   {allMediaTypes.map((t) => (
                     <SelectItem key={t} value={t}>
-                      {t === 'tv' ? 'TV Show' : t.charAt(0).toUpperCase() + t.slice(1)}
+                      {formatMediaTypeLabel(t)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -296,7 +182,7 @@ export function AddMediaDialog({ onAdd, boards, currentBoardId, customGenres, cu
                 <SelectContent>
                   {watchStatuses.map((s) => (
                     <SelectItem key={s} value={s}>
-                      {s.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                      {s.split('-').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -306,21 +192,11 @@ export function AddMediaDialog({ onAdd, boards, currentBoardId, customGenres, cu
 
           <div className="space-y-2">
             <Label>Genres</Label>
-            <Select onValueChange={(value) => handleAddGenre(value as Genre)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select genres" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__ADD_NEW__" className="text-primary">
-                  + Add New Genre
-                </SelectItem>
-                {allGenres.map((g) => (
-                  <SelectItem key={g} value={g}>
-                    {g}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <GenreSelectDropdown
+              genres={allGenres}
+              selectedGenres={selectedGenres}
+              onChange={setSelectedGenres}
+            />
             <div className="flex flex-wrap gap-2 mt-2">
               {selectedGenres.map((genre) => (
                 <Badge key={genre} variant="secondary" className="gap-1">
@@ -328,7 +204,10 @@ export function AddMediaDialog({ onAdd, boards, currentBoardId, customGenres, cu
                   <button
                     type="button"
                     className="ml-1 rounded-full hover:bg-black/10 focus:outline-none"
-                    onClick={(e) => { e.stopPropagation(); handleRemoveGenre(genre); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveGenre(genre);
+                    }}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -430,71 +309,11 @@ export function AddMediaDialog({ onAdd, boards, currentBoardId, customGenres, cu
           <Button variant="outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!title || selectedBoards.length === 0}>
-            Add Media
+          <Button onClick={handleSubmit} disabled={!title.trim() || isSubmitting}>
+            {isSubmitting ? 'Adding…' : 'Add Media'}
           </Button>
         </div>
       </DialogContent>
-
-      {/* Add New Genre Dialog */}
-      <AlertDialog open={showAddGenreDialog} onOpenChange={setShowAddGenreDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Add New Genre</AlertDialogTitle>
-            <AlertDialogDescription>
-              Enter a name for your custom genre. This will be available for all future media items.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Input
-            placeholder="Genre name"
-            value={newGenreInput}
-            onChange={(e) => setNewGenreInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleConfirmAddGenre();
-              }
-            }}
-            autoFocus
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setNewGenreInput('')}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmAddGenre} disabled={!newGenreInput.trim()}>
-              Add Genre
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Add New Media Type Dialog */}
-      <AlertDialog open={showAddMediaTypeDialog} onOpenChange={setShowAddMediaTypeDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Add New Media Type</AlertDialogTitle>
-            <AlertDialogDescription>
-              Enter a name for your custom media type.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Input
-            placeholder="Media type name"
-            value={newMediaTypeInput}
-            onChange={(e) => setNewMediaTypeInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleConfirmAddMediaType();
-              }
-            }}
-            autoFocus
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setNewMediaTypeInput('')}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmAddMediaType} disabled={!newMediaTypeInput.trim()}>
-              Add Media Type
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Dialog>
   );
 }

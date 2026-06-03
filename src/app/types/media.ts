@@ -22,6 +22,7 @@ export interface Board {
   name: string;
   mediaIds: string[];
   isPublic: boolean;
+  isSystem?: boolean;
   coverImage?: string;
   createdAt: string;
   description?: string;

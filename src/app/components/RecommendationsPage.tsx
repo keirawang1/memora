@@ -20,7 +20,7 @@ export function RecommendationsPage({ recommendations, onMediaClick, boards, onA
   const [openPopoverId, setOpenPopoverId] = useState<string | null>(null);
   const [selectedBoards, setSelectedBoards] = useState<Record<string, string[]>>({});
 
-  const availableBoards = boards.filter(board => board.name !== 'All');
+  const availableBoards = boards.filter((board) => !board.isSystem && board.name !== 'All');
 
   const handleBoardToggle = (itemId: string, boardId: string) => {
     setSelectedBoards(prev => {

@@ -6,10 +6,19 @@ export interface UserProfile {
   email: string;
 }
 
+export interface UserTagPreferences {
+  genres: string[];
+  mediaTypes: string[];
+  showAllBoard: boolean;
+}
+
 interface DbUser {
   username: string;
   display_name: string;
   email: string;
+  genres: string[] | null;
+  media_types: string[] | null;
+  show_all_board: boolean | null;
 }
 
 function mapDbUser(row: DbUser): UserProfile {
@@ -38,6 +47,71 @@ export async function getUserProfile(authUserId: string): Promise<UserProfile | 
   return mapDbUser(data as DbUser);
 }
 
+export async function getUserTagPreferences(
+  authUserId: string,
+): Promise<UserTagPreferences> {
+  let { data, error } = await supabase
+    .from('users')
+    .select('genres, media_types, show_all_board')
+    .eq('user_id', authUserId)
+    .maybeSingle();
+
+  if (error) {
+    const fallback = await supabase
+      .from('users')
+      .select('genres, media_types')
+      .eq('user_id', authUserId)
+      .maybeSingle();
+
+    if (fallback.error) throw fallback.error;
+    data = fallback.data;
+    error = null;
+  }
+
+  const row = data as Pick<DbUser, 'genres' | 'media_types' | 'show_all_board'> | null;
+  return {
+    genres: row?.genres ?? [],
+    mediaTypes: row?.media_types ?? [],
+    showAllBoard: row?.show_all_board ?? true,
+  };
+}
+
+export async function updateUserShowAllBoard(
+  authUserId: string,
+  showAllBoard: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ show_all_board: showAllBoard })
+    .eq('user_id', authUserId);
+
+  if (error) throw error;
+}
+
+export async function updateUserGenres(
+  authUserId: string,
+  genres: string[],
+): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ genres })
+    .eq('user_id', authUserId);
+
+  if (error) throw error;
+}
+
+export async function updateUserMediaTypes(
+  authUserId: string,
+  mediaTypes: string[],
+): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ media_types: mediaTypes })
+    .eq('user_id', authUserId);
+
+  if (error) throw error;
+}
+
 export async function createUserProfile(
   authUserId: string,
   email: string,
@@ -52,6 +126,7 @@ export async function createUserProfile(
       email,
       username,
       display_name: displayName,
+      show_all_board: true,
     })
     .select('username, display_name, email')
     .single();

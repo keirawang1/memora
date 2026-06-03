@@ -10,23 +10,23 @@ interface BoardCardProps {
 
 export function BoardCard({ board, itemCount, onClick }: BoardCardProps) {
   const isEmpty = itemCount === 0;
-  
+
   return (
     <div
       className="group cursor-pointer transition-all hover:scale-105"
       onClick={onClick}
     >
       <div className="aspect-square relative bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg overflow-hidden mb-2">
-        {isEmpty ? (
-          <div className="w-full h-full flex items-center justify-center bg-muted/50">
-            <Plus className="w-12 h-12 text-muted-foreground/40" />
-          </div>
-        ) : board.coverImage ? (
+        {board.coverImage ? (
           <ImageWithFallback
             src={board.coverImage}
             alt={board.name}
             className="w-full h-full object-cover"
           />
+        ) : isEmpty ? (
+          <div className="w-full h-full flex items-center justify-center bg-muted/50">
+            <Plus className="w-12 h-12 text-muted-foreground/40" />
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-muted/50">
             <Image className="w-12 h-12 text-muted-foreground/40" />

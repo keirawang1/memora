@@ -15,14 +15,29 @@ import {
   mockFriendActivity
 } from './app/data/mockData';
 import { getDefaultBoards, createDefaultUser } from './app/data/defaults';
+import { filterBoardsForDisplay, isAllBoard, sortBoardsWithAllFirst } from './app/data/allBoard';
 import type { MediaItem, Friend, Board, UserStats } from './app/types/media';
 import { Library, User, Users, Sparkles, Settings, LogOut } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './app/components/ui/dropdown-menu';
 import logoImage from './assets/logo.png';
 import { supabase } from './app/supabase/client';
-import { createBoard, fetchBoards } from './app/supabase/boards';
-import { ensureUserProfile, getUserProfile } from './app/supabase/users';
+import { createBoard, fetchBoards, updateBoard, deleteBoard } from './app/supabase/boards';
+import {
+  createMedia,
+  deleteMedia,
+  fetchMedia,
+  updateMedia,
+  type CreateMediaInput,
+} from './app/supabase/media';
+import {
+  ensureUserProfile,
+  getUserProfile,
+  getUserTagPreferences,
+  updateUserGenres,
+  updateUserMediaTypes,
+  updateUserShowAllBoard,
+} from './app/supabase/users';
 import { AuthPage } from './app/components/AuthPage';
 
 function App() {
@@ -51,17 +66,50 @@ function App() {
   // Custom genres and media types
   const [customGenres, setCustomGenres] = useState<string[]>([]);
   const [customMediaTypes, setCustomMediaTypes] = useState<string[]>([]);
+  const [showAllBoard, setShowAllBoard] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
 
-  const loadBoardsForUser = async () => {
+  const loadUserTagPreferences = async (userId: string) => {
     try {
-      const fetchedBoards = await fetchBoards();
-      if (fetchedBoards.length > 0) {
-        setBoards(fetchedBoards);
-      }
+      const prefs = await getUserTagPreferences(userId);
+      setCustomGenres(prefs.genres);
+      setCustomMediaTypes(prefs.mediaTypes);
+      setShowAllBoard(prefs.showAllBoard);
     } catch {
-      // Keep local default boards if fetch fails
+      setCustomGenres([]);
+      setCustomMediaTypes([]);
+      setShowAllBoard(true);
+    }
+  };
+
+  const loadLibraryForUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    let fetchedMedia: MediaItem[] = [];
+    try {
+      fetchedMedia = await fetchMedia();
+      setMediaItems(fetchedMedia);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load media';
+      toast.error(message);
+    }
+
+    try {
+      const fetchedBoards = await fetchBoards(fetchedMedia);
+      setBoards(fetchedBoards);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load boards';
+      toast.error(message);
+    }
+
+    try {
+      await loadUserTagPreferences(user.id);
+    } catch {
+      setCustomGenres([]);
+      setCustomMediaTypes([]);
+      setShowAllBoard(true);
     }
   };
 
@@ -82,13 +130,17 @@ function App() {
       bio: '',
     });
     setIsAuthenticated(true);
-    void loadBoardsForUser();
+    void loadLibraryForUser();
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setIsAuthenticated(false);
     setBoards(getDefaultBoards());
+    setMediaItems([]);
+    setCustomGenres([]);
+    setCustomMediaTypes([]);
+    setShowAllBoard(true);
     setUser(createDefaultUser());
     setShowProfile(false);
     setSelectedBoard(null);
@@ -134,6 +186,10 @@ function App() {
         if (event === 'SIGNED_OUT') {
           setIsAuthenticated(false);
           setBoards(getDefaultBoards());
+          setMediaItems([]);
+          setCustomGenres([]);
+          setCustomMediaTypes([]);
+          setShowAllBoard(true);
           setUser(createDefaultUser());
         }
       },
@@ -145,32 +201,52 @@ function App() {
     };
   }, []);
 
-  const handleAddMedia = (newMedia: MediaItem, boardIds?: string[]) => {
-    setMediaItems([...mediaItems, newMedia]);
-    
-    // Add media to appropriate default boards based on status
-    const boardIdsToUpdate = new Set(boardIds || []);
-    
-    if (boardIdsToUpdate.size > 0) {
-      setBoards(boards.map(board => {
-        if (boardIdsToUpdate.has(board.id)) {
-          return {
-            ...board,
-            mediaIds: [...board.mediaIds, newMedia.id],
-            coverImage: board.coverImage || newMedia.imageUrl || board.coverImage,
-          };
-        }
-        return board;
-      }));
+  const handleAddMedia = async (
+    newMedia: Omit<MediaItem, 'id' | 'dateAdded'> & { id?: string },
+    boardIds?: string[],
+  ) => {
+    try {
+      const input: CreateMediaInput = {
+        title: newMedia.title,
+        type: newMedia.type,
+        genre: newMedia.genre,
+        status: newMedia.status,
+        imageUrl: newMedia.imageUrl,
+        gallery: newMedia.gallery,
+        rating: newMedia.rating,
+        dateStarted: newMedia.dateStarted,
+        dateCompleted: newMedia.dateCompleted,
+        notes: newMedia.notes,
+        boardIds: boardIds ?? [],
+      };
+      const created = await createMedia(input);
+      const nextMedia = [...mediaItems, created];
+      setMediaItems(nextMedia);
+      try {
+        setBoards(await fetchBoards(nextMedia));
+      } catch {
+        // Keep new media in state if board refresh fails
+      }
+
+      toast.success('Media added to your library!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to add media';
+      toast.error(message);
+      throw error;
     }
-    
-    toast.success('Media added to your library!');
   };
 
   const handleAddBoard = async (input: Parameters<typeof createBoard>[0]) => {
     try {
       const newBoard = await createBoard(input);
-      setBoards((prev) => [...prev, newBoard]);
+      setBoards((prev) =>
+        sortBoardsWithAllFirst([...prev.filter((b) => b.id !== newBoard.id), newBoard]),
+      );
+      try {
+        setBoards(await fetchBoards(mediaItems));
+      } catch {
+        // Keep optimistic board if refresh fails
+      }
       toast.success('Board created successfully!');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create board';
@@ -192,40 +268,101 @@ function App() {
     setDetailDialogOpen(true);
   };
 
-  const handleUpdateNotes = (mediaId: string, notes: string) => {
-    setMediaItems(mediaItems.map(item => 
-      item.id === mediaId ? { ...item, notes } : item
-    ));
-    setSelectedMedia(prev => prev ? { ...prev, notes } : null);
-    toast.success('Notes updated');
+  const handleUpdateNotes = async (mediaId: string, notes: string) => {
+    try {
+      const updated = await updateMedia(mediaId, { notes });
+      setMediaItems((prev) =>
+        prev.map((item) => (item.id === mediaId ? updated : item)),
+      );
+      setSelectedMedia((prev) => (prev?.id === mediaId ? updated : prev));
+      toast.success('Notes updated');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update notes';
+      toast.error(message);
+    }
   };
 
-  const handleUpdateMedia = (mediaId: string, updates: Partial<MediaItem>) => {
-    setMediaItems(mediaItems.map(item => 
-      item.id === mediaId ? { ...item, ...updates } : item
-    ));
-    setSelectedMedia(prev => prev ? { ...prev, ...updates } : null);
-    toast.success('Media updated successfully!');
+  const handleUpdateMedia = async (
+    mediaId: string,
+    updates: Partial<MediaItem>,
+    boardIds?: string[],
+  ) => {
+    try {
+      const updated = await updateMedia(mediaId, {
+        title: updates.title,
+        type: updates.type,
+        genre: updates.genre,
+        status: updates.status,
+        imageUrl: updates.imageUrl,
+        gallery: updates.gallery,
+        rating: updates.rating,
+        dateStarted: updates.dateStarted,
+        dateCompleted: updates.dateCompleted,
+        notes: updates.notes,
+        boardIds,
+      });
+      const nextMedia = mediaItems.map((item) =>
+        item.id === mediaId ? updated : item,
+      );
+      setMediaItems(nextMedia);
+      setSelectedMedia((prev) => (prev?.id === mediaId ? updated : prev));
+      setBoards(await fetchBoards(nextMedia));
+
+      toast.success('Media updated successfully!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update media';
+      toast.error(message);
+    }
   };
 
-  const handleDeleteMedia = (mediaId: string) => {
-    setMediaItems(mediaItems.filter(item => item.id !== mediaId));
-    toast.success('Media removed from your library');
+  const handleDeleteMedia = async (mediaId: string) => {
+    try {
+      await deleteMedia(mediaId);
+      const nextMedia = mediaItems.filter((item) => item.id !== mediaId);
+      setMediaItems(nextMedia);
+      setBoards(await fetchBoards(nextMedia));
+      setSelectedMedia(null);
+      setDetailDialogOpen(false);
+      toast.success('Media removed from your library');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete media';
+      toast.error(message);
+    }
   };
 
-  const handleUpdateBoard = (boardId: string, updates: Partial<Board>) => {
-    setBoards(boards.map(board => 
-      board.id === boardId ? { ...board, ...updates } : board
-    ));
-    setSelectedBoard(prev => prev ? { ...prev, ...updates } : null);
-    toast.success('Board settings updated');
+  const handleUpdateBoard = async (
+    boardId: string,
+    updates: Partial<Board> & { mediaType?: string; coverImageDataUrl?: string },
+  ) => {
+    try {
+      const { mediaType: _mediaType, coverImageDataUrl, ...boardUpdates } = updates;
+      const updated = await updateBoard(boardId, {
+        name: boardUpdates.name,
+        description: boardUpdates.description,
+        isPublic: boardUpdates.isPublic,
+        coverImageDataUrl,
+      });
+      setBoards((prev) => prev.map((board) => (board.id === boardId ? updated : board)));
+      setSelectedBoard((prev) => (prev?.id === boardId ? updated : prev));
+      toast.success('Board settings updated');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update board';
+      toast.error(message);
+    }
   };
 
-  const handleDeleteBoard = (boardId: string) => {
-    setBoards(boards.filter(board => board.id !== boardId));
-    setSelectedBoard(null);
-    toast.success('Board deleted successfully');
+  const handleDeleteBoard = async (boardId: string) => {
+    try {
+      await deleteBoard(boardId);
+      setBoards((prev) => prev.filter((board) => board.id !== boardId));
+      setSelectedBoard(null);
+      toast.success('Board deleted successfully');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete board';
+      toast.error(message);
+    }
   };
+
 
   const handleCreateBoard = () => {
     setAddBoardDialogOpen(true);
@@ -259,17 +396,46 @@ function App() {
     toast.info('Friend request rejected');
   };
 
-  const handleAddCustomGenre = (genre: string) => {
-    if (!customGenres.includes(genre)) {
-      setCustomGenres([...customGenres, genre]);
-      toast.success(`Genre "${genre}" added!`);
+  const handleSaveCustomGenres = async (genres: string[]) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('You must be signed in');
+      await updateUserGenres(user.id, genres);
+      setCustomGenres(genres);
+      toast.success('Custom genres saved');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save genres';
+      toast.error(message);
+      throw error;
     }
   };
 
-  const handleAddCustomMediaType = (type: string) => {
-    if (!customMediaTypes.includes(type)) {
-      setCustomMediaTypes([...customMediaTypes, type]);
-      toast.success(`Media type "${type}" added!`);
+  const handleShowAllBoardChange = async (show: boolean) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('You must be signed in');
+      await updateUserShowAllBoard(user.id, show);
+      setShowAllBoard(show);
+      if (!show && selectedBoard && isAllBoard(selectedBoard)) {
+        setSelectedBoard(null);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update setting';
+      toast.error(message);
+    }
+  };
+
+  const handleSaveCustomMediaTypes = async (mediaTypes: string[]) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('You must be signed in');
+      await updateUserMediaTypes(user.id, mediaTypes);
+      setCustomMediaTypes(mediaTypes);
+      toast.success('Custom media types saved');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save media types';
+      toast.error(message);
+      throw error;
     }
   };
 
@@ -296,6 +462,11 @@ function App() {
   };
 
 
+
+  const visibleBoards = useMemo(
+    () => filterBoardsForDisplay(boards, showAllBoard),
+    [boards, showAllBoard],
+  );
 
   // Calculate stats dynamically from mediaItems
   const calculatedStats: UserStats = useMemo(() => {
@@ -433,7 +604,13 @@ function App() {
             {selectedBoard ? (
               <BoardDetailPage
                 board={boards.find(b => b.id === selectedBoard.id) ?? selectedBoard}
-                mediaItems={mediaItems.filter(item => (boards.find(b => b.id === selectedBoard.id) ?? selectedBoard).mediaIds.includes(item.id))}
+                mediaItems={
+                  isAllBoard(boards.find(b => b.id === selectedBoard.id) ?? selectedBoard)
+                    ? mediaItems
+                    : mediaItems.filter((item) =>
+                        (boards.find(b => b.id === selectedBoard.id) ?? selectedBoard).mediaIds.includes(item.id),
+                      )
+                }
                 onBack={handleBackToLibrary}
                 onMediaClick={handleMediaClick}
                 onUpdateBoard={handleUpdateBoard}
@@ -441,7 +618,7 @@ function App() {
               />
             ) : (
               <LibraryPage
-                boards={boards}
+                boards={visibleBoards}
                 mediaItems={mediaItems}
                 onBoardClick={handleBoardClick}
                 onCreateBoard={handleCreateBoard}
@@ -479,8 +656,6 @@ function App() {
         currentBoardId={selectedBoard?.id}
         customGenres={customGenres}
         customMediaTypes={customMediaTypes}
-        onAddCustomGenre={handleAddCustomGenre}
-        onAddCustomMediaType={handleAddCustomMediaType}
         accentColor={accentColor}
       />
 
@@ -494,13 +669,12 @@ function App() {
         media={selectedMedia}
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}
+        boards={boards}
         onUpdateNotes={handleUpdateNotes}
         onUpdateMedia={handleUpdateMedia}
         onDelete={handleDeleteMedia}
         customGenres={customGenres}
         customMediaTypes={customMediaTypes}
-        onAddCustomGenre={handleAddCustomGenre}
-        onAddCustomMediaType={handleAddCustomMediaType}
       />
 
       <SettingsDialog
@@ -510,6 +684,12 @@ function App() {
         onAccentColorChange={handleAccentColorChange}
         username={user.username}
         onSaveAccountSettings={handleSaveAccountSettings}
+        customGenres={customGenres}
+        customMediaTypes={customMediaTypes}
+        onSaveCustomGenres={handleSaveCustomGenres}
+        onSaveCustomMediaTypes={handleSaveCustomMediaTypes}
+        showAllBoard={showAllBoard}
+        onShowAllBoardChange={handleShowAllBoardChange}
       />
     </div>
   );

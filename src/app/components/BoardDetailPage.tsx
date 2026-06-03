@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Board, MediaItem } from '../types/media';
+import { isAllBoard } from '../data/allBoard';
 import { MediaCard } from './MediaCard';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -18,7 +19,10 @@ interface BoardDetailPageProps {
   mediaItems: MediaItem[];
   onBack: () => void;
   onMediaClick: (media: MediaItem) => void;
-  onUpdateBoard: (boardId: string, updates: Partial<Board> & { mediaType?: string }) => void;
+  onUpdateBoard: (
+    boardId: string,
+    updates: Partial<Board> & { mediaType?: string; coverImageDataUrl?: string },
+  ) => void | Promise<void>;
   onDeleteBoard?: (boardId: string) => void;
 }
 
@@ -38,6 +42,7 @@ export function BoardDetailPage({
   const [boardMediaType, setBoardMediaType] = useState((board as any).mediaType || 'mixed');
   const [boardImageUpload, setBoardImageUpload] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const readOnlyBoard = isAllBoard(board);
 
   const filteredMediaItems = mediaItems.filter(item =>
     item.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -60,7 +65,7 @@ export function BoardDetailPage({
       name: boardName,
       description: boardDescription,
       mediaType: boardMediaType,
-      ...(boardImageUpload && { coverImage: boardImageUpload }),
+      ...(boardImageUpload && { coverImageDataUrl: boardImageUpload }),
     });
     setEditDialogOpen(false);
   };
@@ -112,6 +117,8 @@ export function BoardDetailPage({
             className="flex-1"
           />
 
+          {!readOnlyBoard && (
+          <>
           <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
@@ -241,27 +248,29 @@ export function BoardDetailPage({
             </div>
           </DialogContent>
         </Dialog>
-        </div>
 
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the board "{board.name}" and remove all media from it. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteBoard}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Delete Board
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the board "{board.name}" and remove all media from it. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteBoard}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Delete Board
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+          </>
+          )}
+        </div>
       </div>
 
       {filteredMediaItems.length === 0 ? (
