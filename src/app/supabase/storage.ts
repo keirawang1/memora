@@ -2,6 +2,7 @@ import { supabase } from './client';
 
 export const BOARD_COVERS_BUCKET = 'boards';
 export const AVATARS_BUCKET = 'avatars';
+export const POSTS_BUCKET = 'post';
 
 async function dataUrlToBlob(dataUrl: string): Promise<{ blob: Blob; ext: string }> {
   const response = await fetch(dataUrl);
@@ -50,6 +51,15 @@ export async function uploadUserAvatar(
   const { blob, ext } = await dataUrlToBlob(dataUrl);
   const path = `${userId}/avatar.${ext}`;
   return uploadToBucket(AVATARS_BUCKET, path, blob, true);
+}
+
+export async function uploadPostImage(
+  userId: string,
+  dataUrl: string,
+): Promise<string> {
+  const { blob, ext } = await dataUrlToBlob(dataUrl);
+  const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+  return uploadToBucket(POSTS_BUCKET, path, blob, false);
 }
 
 /** Turn a DB avatar value (URL or storage path) into a URL the browser can load. */

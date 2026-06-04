@@ -12,10 +12,7 @@ import { UserProfilePage } from './app/components/UserProfilePage';
 import { UserAvatar } from './app/components/UserAvatar';
 import { SettingsDialog } from './app/components/SettingsDialog';
 import { Button } from './app/components/ui/button';
-import {
-  mockRecommendations,
-  mockFriendActivity
-} from './app/data/mockData';
+import { mockRecommendations } from './app/data/mockData';
 import { DEFAULT_ACCENT_COLOR, getDefaultBoards, createDefaultUser } from './app/data/defaults';
 import { computeMediaTypeCounts } from './app/data/analytics';
 import { isValidAccentHex } from './app/utils/accentColor';
@@ -781,13 +778,11 @@ function App() {
           <TabsContent value="friends" className="mt-6">
             <FriendsPage
               friends={friends}
-              friendActivity={mockFriendActivity}
-              currentUserId={user.id}
+              currentUser={user}
               onAddFriend={handleAddFriend}
               onAcceptFriend={handleAcceptFriend}
               onRejectFriend={handleRejectFriend}
               onUnfriend={handleUnfriend}
-              onMediaClick={handleMediaClick}
               onViewUserProfile={handleViewUserProfile}
             />
           </TabsContent>
