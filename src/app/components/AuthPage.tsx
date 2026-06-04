@@ -16,6 +16,7 @@ interface AuthPageProps {
     email: string,
     accessToken: string,
     avatar?: string,
+    bio?: string,
   ) => void;
 }
 
@@ -33,6 +34,8 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
       profile.displayName,
       profile.email,
       accessToken,
+      profile.avatar,
+      profile.bio,
     );
   };
 
@@ -67,6 +70,16 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
+  const isExistingAccountError = (err: { code?: string; message?: string }) => {
+    const code = err.code?.toLowerCase() ?? '';
+    const msg = (err.message ?? '').toLowerCase();
+    return (
+      code === 'user_already_exists' ||
+      msg.includes('already registered') ||
+      msg.includes('already exists')
+    );
+  };
+
   const handleSignUp = async () => {
     if (!email || !password) {
       toast.error('Please enter email and password');
@@ -85,11 +98,47 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        if (isExistingAccountError(error)) {
+          toast.error('An account with this email already exists. Try signing in.');
+          return;
+        }
+        throw error;
+      }
 
-      if (data.user && data.user.identities?.length === 0) {
-        toast.error('An account with this email already exists.');
-        return;
+      // With email confirmation on, Supabase may return an obfuscated user (empty identities)
+      // for duplicate emails. Verify by attempting sign-in instead of trusting identities alone.
+      if (data.user && (data.user.identities?.length ?? 0) === 0) {
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (!signInError && signInData.session?.user) {
+          await createUserProfileAfterSignup(signInData.session);
+          toast.success('Signed in successfully!');
+          return;
+        }
+
+        const signInMsg = (signInError?.message ?? '').toLowerCase();
+        if (signInMsg.includes('not confirmed')) {
+          toast.success('Check your email to confirm your account, then sign in.');
+          setMode('signin');
+          setPassword('');
+          return;
+        }
+
+        if (
+          signInError &&
+          (signInMsg.includes('invalid') || signInMsg.includes('credentials'))
+        ) {
+          toast.error(
+            'An account with this email may already exist. Try signing in, or reset your password.',
+          );
+          return;
+        }
+
+        if (signInError) throw signInError;
       }
 
       if (data.session?.user) {

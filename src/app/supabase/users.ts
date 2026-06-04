@@ -1,9 +1,20 @@
 import { supabase } from './client';
+import { getAvatarDisplayUrl, resolveAvatarUrl } from './storage';
 
 export interface UserProfile {
   username: string;
   displayName: string;
   email: string;
+  avatar?: string;
+  bio?: string;
+}
+
+export interface PublicUser {
+  id: string;
+  username: string;
+  displayName: string;
+  avatar?: string;
+  bio?: string;
 }
 
 export interface UserTagPreferences {
@@ -16,17 +27,170 @@ interface DbUser {
   username: string;
   display_name: string;
   email: string;
+  avatar_url: string | null;
+  bio: string | null;
   genres: string[] | null;
   media_types: string[] | null;
   show_all_board: boolean | null;
 }
 
-function mapDbUser(row: DbUser): UserProfile {
+type ProfileRow = Pick<DbUser, 'username' | 'display_name' | 'email' | 'avatar_url' | 'bio'>;
+
+const PROFILE_SELECT_ATTEMPTS = [
+  'username, display_name, email, avatar, avatar_url, bio',
+  'username, display_name, email, avatar, avatar_url',
+  'username, display_name, email, avatar, bio',
+  'username, display_name, email, avatar',
+  'username, display_name, email, avatar_url, bio',
+  'username, display_name, email, avatar_url',
+  'username, display_name, email, bio',
+  'username, display_name, email',
+] as const;
+
+const PUBLIC_SELECT_ATTEMPTS = [
+  'user_id, username, display_name, avatar, avatar_url, bio',
+  'user_id, username, display_name, avatar, avatar_url',
+  'user_id, username, display_name, avatar, bio',
+  'user_id, username, display_name, avatar',
+  'user_id, username, display_name, avatar_url, bio',
+  'user_id, username, display_name, avatar_url',
+  'user_id, username, display_name, bio',
+  'user_id, username, display_name',
+] as const;
+
+function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === '42703' || error.code === 'PGRST204') return true;
+  const msg = (error.message ?? '').toLowerCase();
+  return msg.includes('does not exist');
+}
+
+function isMissingBioColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!isMissingColumnError(error)) return false;
+  const msg = (error.message ?? '').toLowerCase();
+  return msg.includes('bio');
+}
+
+function isUniqueViolation(error: { code?: string } | null): boolean {
+  return error?.code === '23505';
+}
+
+function readAvatarFromRow(row: {
+  avatar_url?: string | null;
+  avatar?: string | null;
+}): string | null {
+  const fromAvatar = row.avatar?.trim();
+  const fromUrl = row.avatar_url?.trim();
+  return fromAvatar || fromUrl || null;
+}
+
+function mapDbUser(row: ProfileRow): UserProfile {
+  const storedAvatar = row.avatar_url;
   return {
     username: row.username,
     displayName: row.display_name,
     email: row.email,
+    avatar: getAvatarDisplayUrl(storedAvatar),
+    bio: row.bio ?? undefined,
   };
+}
+
+function mapPublicUser(row: {
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url?: string | null;
+  avatar?: string | null;
+  bio?: string | null;
+}): PublicUser {
+  return {
+    id: row.user_id,
+    username: row.username,
+    displayName: row.display_name,
+    avatar: getAvatarDisplayUrl(readAvatarFromRow(row)),
+    bio: row.bio ?? undefined,
+  };
+}
+
+function toProfileRow(row: {
+  username: string;
+  display_name: string;
+  email: string;
+  avatar_url?: string | null;
+  avatar?: string | null;
+  bio?: string | null;
+}): ProfileRow {
+  return {
+    username: row.username,
+    display_name: row.display_name,
+    email: row.email,
+    avatar_url: readAvatarFromRow(row),
+    bio: row.bio ?? null,
+  };
+}
+
+async function fetchProfileRow(authUserId: string): Promise<ProfileRow | null> {
+  for (const select of PROFILE_SELECT_ATTEMPTS) {
+    const { data, error } = await supabase
+      .from('users')
+      .select(select)
+      .eq('user_id', authUserId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return toProfileRow(data as unknown as Parameters<typeof toProfileRow>[0]);
+    }
+    if (!error) {
+      return null;
+    }
+
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+  }
+
+  return null;
+}
+
+/** Upload if needed, then write storage URL to users.avatar_url (or legacy users.avatar). */
+export async function updateUserAvatar(
+  authUserId: string,
+  avatar?: string,
+): Promise<string | null | undefined> {
+  const resolved = await resolveAvatarUrl(authUserId, avatar);
+  if (resolved === undefined) return undefined;
+
+  const dbValue = resolved?.split('?')[0] ?? null;
+
+  const writeAttempts: Record<string, string | null>[] = [
+    { avatar: dbValue, avatar_url: dbValue },
+    { avatar: dbValue },
+    { avatar_url: dbValue },
+  ];
+
+  let lastError: { message?: string } | null = null;
+
+  for (const payload of writeAttempts) {
+    const filtered = Object.fromEntries(
+      Object.entries(payload).filter(([, v]) => v !== undefined),
+    );
+    const { error } = await supabase
+      .from('users')
+      .update(filtered)
+      .eq('user_id', authUserId);
+
+    if (!error) {
+      return resolved;
+    }
+
+    if (!isMissingColumnError(error)) {
+      throw new Error(error.message || 'Failed to save avatar to profile');
+    }
+
+    lastError = error;
+  }
+
+  throw new Error(lastError?.message || 'Failed to save avatar to profile');
 }
 
 function generateUsername(email: string): string {
@@ -36,15 +200,137 @@ function generateUsername(email: string): string {
 }
 
 export async function getUserProfile(authUserId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase
-    .from('users')
-    .select('username, display_name, email')
-    .eq('user_id', authUserId)
-    .maybeSingle();
+  const row = await fetchProfileRow(authUserId);
+  if (!row) return null;
+  return mapDbUser(row);
+}
 
-  if (error) throw error;
-  if (!data) return null;
-  return mapDbUser(data as DbUser);
+export async function getPublicUsersByIds(userIds: string[]): Promise<PublicUser[]> {
+  if (userIds.length === 0) return [];
+
+  for (const select of PUBLIC_SELECT_ATTEMPTS) {
+    const { data, error } = await supabase
+      .from('users')
+      .select(select)
+      .in('user_id', userIds);
+
+    if (!error) {
+      return (data ?? []).map((row) =>
+        mapPublicUser(row as unknown as Parameters<typeof mapPublicUser>[0]),
+      );
+    }
+
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+  }
+
+  return [];
+}
+
+export async function searchUsersByUsername(
+  query: string,
+  excludeUserId: string,
+  limit = 8,
+): Promise<PublicUser[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  for (const select of PUBLIC_SELECT_ATTEMPTS) {
+    const { data, error } = await supabase
+      .from('users')
+      .select(select)
+      .neq('user_id', excludeUserId)
+      .ilike('username', `%${trimmed}%`)
+      .order('username')
+      .limit(limit);
+
+    if (!error) {
+      return (data ?? []).map((row) =>
+        mapPublicUser(row as unknown as Parameters<typeof mapPublicUser>[0]),
+      );
+    }
+
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+  }
+
+  return [];
+}
+
+export async function updateUserProfile(
+  authUserId: string,
+  data: { displayName: string; bio: string; avatar?: string },
+): Promise<UserProfile> {
+  if (data.avatar !== undefined) {
+    await updateUserAvatar(authUserId, data.avatar);
+  }
+
+  const displayName = data.displayName.trim();
+  const bio = data.bio.trim() || null;
+
+  const textPayloads: Record<string, unknown>[] = [
+    { display_name: displayName, bio },
+    { display_name: displayName },
+  ];
+
+  let lastError: { code?: string; message?: string } | null = null;
+
+  for (const payload of textPayloads) {
+    const { error } = await supabase
+      .from('users')
+      .update(payload)
+      .eq('user_id', authUserId);
+
+    if (!error) {
+      const profile = await getUserProfile(authUserId);
+      if (!profile) {
+        throw new Error('Profile not found after update');
+      }
+      return profile;
+    }
+
+    if (isMissingBioColumnError(error)) {
+      lastError = error;
+      continue;
+    }
+
+    throw error;
+  }
+
+  const message = lastError?.message ?? 'Failed to update profile';
+  throw new Error(message);
+}
+
+export async function updateUsername(
+  authUserId: string,
+  username: string,
+): Promise<UserProfile> {
+  const normalized = username.trim().toLowerCase();
+
+  for (const select of PROFILE_SELECT_ATTEMPTS) {
+    const result = await supabase
+      .from('users')
+      .update({ username: normalized })
+      .eq('user_id', authUserId)
+      .select(select)
+      .single();
+
+    if (!result.error && result.data) {
+      return mapDbUser(toProfileRow(result.data as unknown as Parameters<typeof toProfileRow>[0]));
+    }
+
+    if (result.error?.code === '23505') {
+      throw new Error('Username is already taken');
+    }
+
+    if (!isMissingColumnError(result.error)) {
+      throw result.error;
+    }
+  }
+
+  throw new Error('Failed to update username');
 }
 
 export async function getUserTagPreferences(
@@ -119,20 +405,35 @@ export async function createUserProfile(
   const username = generateUsername(email);
   const displayName = username.charAt(0).toUpperCase() + username.slice(1);
 
-  const { data, error } = await supabase
-    .from('users')
-    .insert({
-      user_id: authUserId,
-      email,
-      username,
-      display_name: displayName,
-      show_all_board: true,
-    })
-    .select('username, display_name, email')
-    .single();
+  const insertPayload: Record<string, unknown> = {
+    user_id: authUserId,
+    email,
+    username,
+    display_name: displayName,
+    show_all_board: true,
+  };
 
-  if (error) throw error;
-  return mapDbUser(data as DbUser);
+  let lastError: { code?: string; message?: string } | null = null;
+
+  for (const select of PROFILE_SELECT_ATTEMPTS) {
+    const result = await supabase
+      .from('users')
+      .insert(insertPayload)
+      .select(select)
+      .single();
+
+    if (!result.error && result.data) {
+      return mapDbUser(toProfileRow(result.data as unknown as Parameters<typeof toProfileRow>[0]));
+    }
+
+    if (!isMissingColumnError(result.error)) {
+      throw result.error;
+    }
+
+    lastError = result.error;
+  }
+
+  throw lastError ?? new Error('Failed to create profile');
 }
 
 export async function ensureUserProfile(
@@ -141,5 +442,14 @@ export async function ensureUserProfile(
 ): Promise<UserProfile> {
   const existing = await getUserProfile(authUserId);
   if (existing) return existing;
-  return createUserProfile(authUserId, email);
+
+  try {
+    return await createUserProfile(authUserId, email);
+  } catch (error) {
+    if (isUniqueViolation(error as { code?: string })) {
+      const retry = await getUserProfile(authUserId);
+      if (retry) return retry;
+    }
+    throw error;
+  }
 }

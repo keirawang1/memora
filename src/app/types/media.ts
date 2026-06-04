@@ -42,6 +42,8 @@ export interface Friend {
   id: string;
   user: User;
   status: 'pending' | 'accepted' | 'rejected';
+  /** Incoming = someone requested you; outgoing = you requested them */
+  direction?: 'incoming' | 'outgoing';
   addedAt: string;
 }
 

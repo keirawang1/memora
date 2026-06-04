@@ -1,6 +1,7 @@
 import { supabase } from './client';
 
 export const BOARD_COVERS_BUCKET = 'boards';
+export const AVATARS_BUCKET = 'avatars';
 
 async function dataUrlToBlob(dataUrl: string): Promise<{ blob: Blob; ext: string }> {
   const response = await fetch(dataUrl);
@@ -11,24 +12,108 @@ async function dataUrlToBlob(dataUrl: string): Promise<{ blob: Blob; ext: string
   return { blob, ext };
 }
 
+async function uploadToBucket(
+  bucket: string,
+  path: string,
+  blob: Blob,
+  upsert: boolean,
+): Promise<string> {
+  const { error: uploadError } = await supabase.storage
+    .from(bucket)
+    .upload(path, blob, {
+      contentType: blob.type || 'image/jpeg',
+      upsert,
+    });
+
+  if (uploadError) {
+    throw new Error(uploadError.message || 'Failed to upload image');
+  }
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  const cacheBust = upsert ? `?t=${Date.now()}` : '';
+  return `${data.publicUrl}${cacheBust}`;
+}
+
 export async function uploadBoardCoverImage(
   userId: string,
   dataUrl: string,
 ): Promise<string> {
   const { blob, ext } = await dataUrlToBlob(dataUrl);
   const path = `${userId}/covers/${crypto.randomUUID()}.${ext}`;
+  return uploadToBucket(BOARD_COVERS_BUCKET, path, blob, false);
+}
 
-  const { error: uploadError } = await supabase.storage
-    .from(BOARD_COVERS_BUCKET)
-    .upload(path, blob, {
-      contentType: blob.type || 'image/jpeg',
-      upsert: false,
-    });
+export async function uploadUserAvatar(
+  userId: string,
+  dataUrl: string,
+): Promise<string> {
+  const { blob, ext } = await dataUrlToBlob(dataUrl);
+  const path = `${userId}/avatar.${ext}`;
+  return uploadToBucket(AVATARS_BUCKET, path, blob, true);
+}
 
-  if (uploadError) throw uploadError;
+/** Turn a DB avatar value (URL or storage path) into a URL the browser can load. */
+export function getAvatarDisplayUrl(stored: string | null | undefined): string | undefined {
+  if (!stored?.trim()) return undefined;
 
-  const { data } = supabase.storage.from(BOARD_COVERS_BUCKET).getPublicUrl(path);
+  const trimmed = stored.trim();
+  if (trimmed.startsWith('data:') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+
+  const pathFromPublicUrl = getAvatarStoragePath(trimmed);
+  const objectPath = pathFromPublicUrl ?? trimmed.replace(/^\//, '');
+
+  if (!objectPath) return undefined;
+
+  const { data } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(objectPath);
   return data.publicUrl;
+}
+
+export function getAvatarStoragePath(avatarValue: string): string | null {
+  const trimmed = avatarValue.trim();
+  if (!trimmed) return null;
+
+  const markers = [
+    `/object/public/${AVATARS_BUCKET}/`,
+    `/public/${AVATARS_BUCKET}/`,
+    `/object/public/${BOARD_COVERS_BUCKET}/`,
+    `/public/${BOARD_COVERS_BUCKET}/`,
+  ];
+
+  for (const marker of markers) {
+    const index = trimmed.indexOf(marker);
+    if (index !== -1) {
+      return decodeURIComponent(trimmed.slice(index + marker.length).split('?')[0]);
+    }
+  }
+
+  if (!trimmed.startsWith('http') && trimmed.includes('/avatar.')) {
+    return decodeURIComponent(trimmed.split('?')[0]);
+  }
+
+  return null;
+}
+
+/** Upload data URLs to storage; store public URL in DB. */
+export async function resolveAvatarUrl(
+  userId: string,
+  avatar?: string,
+): Promise<string | null | undefined> {
+  if (avatar === undefined) return undefined;
+  if (!avatar) return null;
+  if (avatar.startsWith('data:')) {
+    return uploadUserAvatar(userId, avatar);
+  }
+  if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+    return avatar.split('?')[0];
+  }
+  const path = getAvatarStoragePath(avatar) ?? avatar.replace(/^\//, '');
+  if (path) {
+    const { data } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
+  }
+  return null;
 }
 
 export async function resolveCoverImageUrl(

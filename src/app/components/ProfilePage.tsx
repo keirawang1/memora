@@ -1,32 +1,56 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { User, UserStats, MediaItem } from '../types/media';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { UserAvatar } from './UserAvatar';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Film, Tv, Sparkles, BookOpen, Book, Trophy, Activity, TrendingUp, Pencil } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
 import { EditProfileDialog } from './EditProfileDialog';
+import { getUserProfile } from '../supabase/users';
 
 interface ProfilePageProps {
   user: User;
   stats: UserStats;
   mediaItems: MediaItem[];
-  onUpdateProfile?: (data: { displayName: string; bio: string; avatar?: string }) => void;
+  accentColor?: string;
+  onUpdateProfile?: (data: { displayName: string; bio: string; avatar?: string }) => void | Promise<void>;
 }
 
-export function ProfilePage({ user, stats, mediaItems, onUpdateProfile }: ProfilePageProps) {
+export function ProfilePage({ user, stats, mediaItems, accentColor, onUpdateProfile }: ProfilePageProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(user);
 
-  const handleSaveProfile = (data: { displayName: string; bio: string; avatar?: string }) => {
-    setCurrentUser({
-      ...currentUser,
-      displayName: data.displayName,
-      bio: data.bio,
-      avatar: data.avatar,
-    });
-    onUpdateProfile?.(data);
+  useEffect(() => {
+    setCurrentUser(user);
+  }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const profile = await getUserProfile(user.id);
+        if (!cancelled && profile) {
+          setCurrentUser((prev) => ({
+            ...prev,
+            displayName: profile.displayName,
+            bio: profile.bio ?? '',
+            avatar: profile.avatar,
+          }));
+        }
+      } catch {
+        // Keep props from parent if refresh fails
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id]);
+
+  const handleSaveProfile = async (data: { displayName: string; bio: string; avatar?: string }) => {
+    await onUpdateProfile?.(data);
   };
   // Define icon mapping for known types
   const typeIconMap: Record<string, { icon: any; color: string }> = {
@@ -123,6 +147,7 @@ export function ProfilePage({ user, stats, mediaItems, onUpdateProfile }: Profil
         displayName={currentUser.displayName}
         bio={currentUser.bio || ''}
         avatar={currentUser.avatar}
+        accentColor={accentColor}
         onSave={handleSaveProfile}
       />
       
@@ -131,17 +156,19 @@ export function ProfilePage({ user, stats, mediaItems, onUpdateProfile }: Profil
         <CardContent className="pt-6">
           <div className="text-center">
             <div className="flex justify-center mb-6">
-              <Avatar className="!w-[150px] !h-[150px]">
-                <AvatarImage src={currentUser.avatar} alt={currentUser.displayName} className="object-cover" />
-                <AvatarFallback>{currentUser.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
+              <UserAvatar
+                displayName={currentUser.displayName}
+                avatar={currentUser.avatar}
+                size="lg"
+                accentColor={accentColor}
+              />
             </div>
             <div className="flex items-center justify-center gap-2 mb-1">
               <h1>{currentUser.displayName}</h1>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="h-5 w-5"
                 onClick={() => setEditDialogOpen(true)}
               >
                 <Pencil className="w-4 h-4" />

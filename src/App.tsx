@@ -8,6 +8,7 @@ import { AddMediaDialog } from './app/components/AddMediaDialog';
 import { AddBoardDialog } from './app/components/AddBoardDialog';
 import { MediaDetailDialog } from './app/components/MediaDetailDialog';
 import { ProfilePage } from './app/components/ProfilePage';
+import { UserAvatar } from './app/components/UserAvatar';
 import { SettingsDialog } from './app/components/SettingsDialog';
 import { Button } from './app/components/ui/button';
 import {
@@ -16,8 +17,8 @@ import {
 } from './app/data/mockData';
 import { getDefaultBoards, createDefaultUser } from './app/data/defaults';
 import { filterBoardsForDisplay, isAllBoard, sortBoardsWithAllFirst } from './app/data/allBoard';
-import type { MediaItem, Friend, Board, UserStats } from './app/types/media';
-import { Library, User, Users, Sparkles, Settings, LogOut } from 'lucide-react';
+import type { MediaItem, Friend, Board, UserStats, User } from './app/types/media';
+import { Library, User as UserIcon, Users, Sparkles, Settings, LogOut } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './app/components/ui/dropdown-menu';
 import logoImage from './assets/logo.png';
@@ -31,12 +32,21 @@ import {
   type CreateMediaInput,
 } from './app/supabase/media';
 import {
+  acceptFriendRequest,
+  fetchFriends,
+  rejectFriendRequest,
+  removeFriend,
+  sendFriendRequest,
+} from './app/supabase/friends';
+import {
   ensureUserProfile,
   getUserProfile,
   getUserTagPreferences,
   updateUserGenres,
   updateUserMediaTypes,
+  updateUserProfile,
   updateUserShowAllBoard,
+  updateUsername,
 } from './app/supabase/users';
 import { AuthPage } from './app/components/AuthPage';
 
@@ -111,6 +121,14 @@ function App() {
       setCustomMediaTypes([]);
       setShowAllBoard(true);
     }
+
+    try {
+      setFriends(await fetchFriends(user.id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load friends';
+      toast.error(message);
+      setFriends([]);
+    }
   };
 
   const handleAuthSuccess = (
@@ -120,6 +138,7 @@ function App() {
     email: string,
     _accessToken: string,
     avatar?: string,
+    bio?: string,
   ) => {
     setUser({
       id: userId,
@@ -127,7 +146,7 @@ function App() {
       displayName,
       email,
       avatar,
-      bio: '',
+      bio: bio ?? '',
     });
     setIsAuthenticated(true);
     void loadLibraryForUser();
@@ -144,6 +163,7 @@ function App() {
     setUser(createDefaultUser());
     setShowProfile(false);
     setSelectedBoard(null);
+    setFriends([]);
     toast.info('Signed out');
   };
 
@@ -168,6 +188,8 @@ function App() {
             profile.displayName,
             profile.email,
             session.access_token,
+            profile.avatar,
+            profile.bio,
           );
         } catch {
           if (mounted) setIsAuthenticated(false);
@@ -187,6 +209,7 @@ function App() {
           setIsAuthenticated(false);
           setBoards(getDefaultBoards());
           setMediaItems([]);
+          setFriends([]);
           setCustomGenres([]);
           setCustomMediaTypes([]);
           setShowAllBoard(true);
@@ -366,32 +389,66 @@ function App() {
     setAddBoardDialogOpen(true);
   };
 
-  const handleAddFriend = (username: string) => {
-    const newFriend: Friend = {
-      id: `friend-${Date.now()}`,
-      user: {
-        id: `user-${Date.now()}`,
-        username,
-        displayName: username.charAt(0).toUpperCase() + username.slice(1).replace('_', ' '),
-        avatar: `https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop`,
-      },
-      status: 'pending',
-      addedAt: new Date().toISOString().split('T')[0],
-    };
-    setFriends([...friends, newFriend]);
-    toast.success(`Friend request sent to @${username}`);
+  const handleAddFriend = async (targetUser: User) => {
+    if (targetUser.id === user.id) {
+      toast.error("You can't add yourself");
+      return;
+    }
+    const existing = friends.find((f) => f.user.id === targetUser.id);
+    if (existing?.status === 'accepted') {
+      toast.error('Already friends');
+      return;
+    }
+    if (existing?.status === 'pending' && existing.direction === 'outgoing') {
+      toast.error('Friend request already sent');
+      return;
+    }
+    if (existing?.status === 'pending' && existing.direction === 'incoming') {
+      toast.error('They already sent you a request — accept it below');
+      return;
+    }
+
+    try {
+      await sendFriendRequest(targetUser.id);
+      setFriends(await fetchFriends(user.id));
+      toast.success(`Friend request sent to @${targetUser.username}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to send friend request';
+      toast.error(message);
+    }
   };
 
-  const handleAcceptFriend = (friendId: string) => {
-    setFriends(friends.map(f => 
-      f.id === friendId ? { ...f, status: 'accepted' as const } : f
-    ));
-    toast.success('Friend request accepted!');
+  const handleAcceptFriend = async (requesterId: string) => {
+    try {
+      await acceptFriendRequest(requesterId);
+      setFriends(await fetchFriends(user.id));
+      toast.success('Friend request accepted!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to accept friend request';
+      toast.error(message);
+    }
   };
 
-  const handleRejectFriend = (friendId: string) => {
-    setFriends(friends.filter(f => f.id !== friendId));
-    toast.info('Friend request rejected');
+  const handleRejectFriend = async (requesterId: string) => {
+    try {
+      await rejectFriendRequest(requesterId);
+      setFriends(await fetchFriends(user.id));
+      toast.info('Friend request rejected');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reject friend request';
+      toast.error(message);
+    }
+  };
+
+  const handleUnfriend = async (friendUserId: string) => {
+    try {
+      await removeFriend(friendUserId);
+      setFriends(await fetchFriends(user.id));
+      toast.success('Friend removed');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to remove friend';
+      toast.error(message);
+    }
   };
 
   const handleSaveCustomGenres = async (genres: string[]) => {
@@ -441,22 +498,40 @@ function App() {
     setAccentColor(color);
   };
 
-  const handleUpdateProfile = (data: { displayName: string; bio: string; avatar?: string }) => {
-    setUser({
-      ...user,
-      displayName: data.displayName,
-      bio: data.bio,
-      avatar: data.avatar,
-    });
-    toast.success('Profile updated successfully!');
+  const handleUpdateProfile = async (data: { displayName: string; bio: string; avatar?: string }) => {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) throw new Error('You must be signed in');
+      const profile = await updateUserProfile(authUser.id, data);
+      setUser({
+        ...user,
+        displayName: profile.displayName,
+        bio: profile.bio ?? '',
+        avatar: profile.avatar,
+      });
+      toast.success('Profile updated successfully!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update profile';
+      toast.error(message);
+      throw error;
+    }
   };
 
-  const handleSaveAccountSettings = (data: { username: string }) => {
-    setUser({
-      ...user,
-      username: data.username,
-    });
-    toast.success('Account settings saved!');
+  const handleSaveAccountSettings = async (data: { username: string }) => {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) throw new Error('You must be signed in');
+      const profile = await updateUsername(authUser.id, data.username);
+      setUser({
+        ...user,
+        username: profile.username,
+      });
+      toast.success('Account settings saved!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save username';
+      toast.error(message);
+      throw error;
+    }
   };
 
 
@@ -532,20 +607,22 @@ function App() {
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button 
-                    className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity overflow-hidden"
-                    style={!user.avatar ? { backgroundColor: accentColor } : undefined}
+                  <button
+                    type="button"
+                    className="rounded-full cursor-pointer hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Account menu"
                   >
-                    {user.avatar ? (
-                      <img src={user.avatar} alt={user.displayName} className="w-full h-full object-cover" />
-                    ) : (
-                      <User className="w-6 h-6 text-white" />
-                    )}
+                    <UserAvatar
+                      displayName={user.displayName}
+                      avatar={user.avatar}
+                      size="sm"
+                      accentColor={accentColor}
+                    />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => setShowProfile(true)}>
-                    <User className="w-4 h-4 mr-2" />
+                    <UserIcon className="w-4 h-4 mr-2" />
                     View Profile
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -574,10 +651,11 @@ function App() {
               </Button>
               <h1>Profile</h1>
             </div>
-            <ProfilePage 
-              user={user} 
-              stats={calculatedStats} 
+            <ProfilePage
+              user={user}
+              stats={calculatedStats}
               mediaItems={mediaItems}
+              accentColor={accentColor}
               onUpdateProfile={handleUpdateProfile}
             />
           </div>
@@ -640,9 +718,11 @@ function App() {
             <FriendsPage
               friends={friends}
               friendActivity={mockFriendActivity}
+              currentUserId={user.id}
               onAddFriend={handleAddFriend}
               onAcceptFriend={handleAcceptFriend}
               onRejectFriend={handleRejectFriend}
+              onUnfriend={handleUnfriend}
               onMediaClick={handleMediaClick}
             />
           </TabsContent>
