@@ -4,8 +4,7 @@ import { isAllBoard } from '../data/allBoard';
 import { MediaCard } from './MediaCard';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Input } from './ui/input';
-import { TagFilterDropdown } from './TagFilterDropdown';
+import { SearchFilterBar } from './SearchFilterBar';
 import { MediaTypeSelectDropdown } from './MediaTypeSelectDropdown';
 import { ArrowLeft, Globe, Lock, Pencil, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
@@ -61,6 +60,7 @@ export function BoardDetailPage({
   const [genreFilters, setGenreFilters] = useState<string[]>([]);
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
   const readOnlyBoard = isAllBoard(board);
 
   const allGenres = useMemo(
@@ -152,31 +152,35 @@ export function BoardDetailPage({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Input
+          <SearchFilterBar
             placeholder="Search media..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 min-w-[200px]"
-          />
-          <TagFilterDropdown
-            options={allGenres}
-            selected={genreFilters}
-            onChange={setGenreFilters}
-            placeholder="Genre"
-          />
-          <TagFilterDropdown
-            options={allMediaTypes}
-            selected={typeFilters}
-            onChange={setTypeFilters}
-            placeholder="Media type"
-            formatLabel={formatMediaTypeLabel}
-          />
-          <TagFilterDropdown
-            options={watchStatuses}
-            selected={statusFilters}
-            onChange={setStatusFilters}
-            placeholder="Status"
-            formatLabel={formatWatchStatusLabel}
+            onChange={setSearchQuery}
+            filterOpen={filterOpen}
+            onFilterOpenChange={setFilterOpen}
+            hasActiveFilters={hasActiveFilters}
+            sections={[
+              {
+                title: 'Genre',
+                options: allGenres,
+                selected: genreFilters,
+                onChange: setGenreFilters,
+              },
+              {
+                title: 'Media type',
+                options: allMediaTypes,
+                selected: typeFilters,
+                onChange: setTypeFilters,
+                formatLabel: formatMediaTypeLabel,
+              },
+              {
+                title: 'Status',
+                options: watchStatuses,
+                selected: statusFilters,
+                onChange: setStatusFilters,
+                formatLabel: formatWatchStatusLabel,
+              },
+            ]}
           />
 
           {!readOnlyBoard && (

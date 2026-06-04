@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Board } from '../types/media';
 import { BoardCard } from './BoardCard';
-import { Input } from './ui/input';
-import { TagFilterDropdown } from './TagFilterDropdown';
+import { SearchFilterBar } from './SearchFilterBar';
 import { Plus } from 'lucide-react';
 import {
   boardMatchesTypeFilter,
@@ -27,6 +26,7 @@ export function LibraryPage({
 }: LibraryPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const mediaTypeOptions = useMemo(
     () => getBoardMediaTypeOptions(customMediaTypes),
@@ -51,18 +51,22 @@ export function LibraryPage({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Input
+        <SearchFilterBar
           placeholder="Search boards..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 min-w-[200px]"
-        />
-        <TagFilterDropdown
-          options={mediaTypeOptions}
-          selected={typeFilters}
-          onChange={setTypeFilters}
-          placeholder="Media type"
-          formatLabel={formatMediaTypeLabel}
+          onChange={setSearchQuery}
+          filterOpen={filterOpen}
+          onFilterOpenChange={setFilterOpen}
+          hasActiveFilters={hasActiveFilters}
+          sections={[
+            {
+              title: 'Media type',
+              options: mediaTypeOptions,
+              selected: typeFilters,
+              onChange: setTypeFilters,
+              formatLabel: formatMediaTypeLabel,
+            },
+          ]}
         />
         <button
           onClick={onCreateBoard}
