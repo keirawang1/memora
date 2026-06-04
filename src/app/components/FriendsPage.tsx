@@ -29,6 +29,7 @@ interface FriendsPageProps {
   onRejectFriend: (friendId: string) => void;
   onUnfriend: (friendId: string) => void;
   onMediaClick: (media: MediaItem) => void;
+  onViewUserProfile: (userId: string) => void;
 }
 
 function publicUserToUser(publicUser: PublicUser): User {
@@ -45,30 +46,48 @@ function isIncomingRequest(friend: Friend): boolean {
   return friend.status === 'pending' && friend.direction !== 'outgoing';
 }
 
+function UserIdentityButton({
+  user,
+  onViewProfile,
+}: {
+  user: User;
+  onViewProfile: (userId: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onViewProfile(user.id)}
+      className="flex items-center gap-3 min-w-0 text-left rounded-md hover:bg-muted/60 transition-colors p-1 -m-1"
+    >
+      <Avatar>
+        <AvatarImage src={user.avatar} alt={user.username} className="object-cover" />
+        <AvatarFallback>{user.username.slice(0, 1).toUpperCase()}</AvatarFallback>
+      </Avatar>
+      <div className="min-w-0">
+        <div className="truncate">
+          {user.displayName}{' '}
+          <span className="text-muted-foreground">@{user.username}</span>
+        </div>
+        {user.bio && (
+          <div className="text-sm text-muted-foreground truncate">{user.bio}</div>
+        )}
+      </div>
+    </button>
+  );
+}
+
 function FriendRow({
   friend,
   actions,
+  onViewProfile,
 }: {
   friend: Friend;
   actions?: React.ReactNode;
+  onViewProfile: (userId: string) => void;
 }) {
   return (
     <div className="flex items-center justify-between p-3 rounded-lg border gap-3">
-      <div className="flex items-center gap-3 min-w-0">
-        <Avatar>
-          <AvatarImage src={friend.user.avatar} alt={friend.user.username} className="object-cover" />
-          <AvatarFallback>{friend.user.username.slice(0, 1).toUpperCase()}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <div className="truncate">
-            {friend.user.displayName}{' '}
-            <span className="text-muted-foreground">@{friend.user.username}</span>
-          </div>
-          {friend.user.bio && (
-            <div className="text-sm text-muted-foreground truncate">{friend.user.bio}</div>
-          )}
-        </div>
-      </div>
+      <UserIdentityButton user={friend.user} onViewProfile={onViewProfile} />
       {actions ? <div className="flex gap-2 shrink-0">{actions}</div> : null}
     </div>
   );
@@ -83,6 +102,7 @@ export function FriendsPage({
   onRejectFriend,
   onUnfriend,
   onMediaClick,
+  onViewUserProfile,
 }: FriendsPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PublicUser[]>([]);
@@ -171,6 +191,7 @@ export function FriendsPage({
                     <FriendRow
                       key={friend.id}
                       friend={friend}
+                      onViewProfile={onViewUserProfile}
                       actions={
                         <>
                           <Button
@@ -202,6 +223,7 @@ export function FriendsPage({
                     <FriendRow
                       key={friend.id}
                       friend={friend}
+                      onViewProfile={onViewUserProfile}
                       actions={<Badge variant="secondary">Awaiting response</Badge>}
                     />
                   ))}
@@ -238,23 +260,10 @@ export function FriendsPage({
                   key={result.id}
                   className="flex items-center justify-between p-3 rounded-lg border"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Avatar>
-                      <AvatarImage src={result.avatar} alt={result.username} className="object-cover" />
-                      <AvatarFallback>
-                        {result.username.slice(0, 1).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <div className="truncate">
-                        {result.displayName}{' '}
-                        <span className="text-muted-foreground">@{result.username}</span>
-                      </div>
-                      {result.bio && (
-                        <div className="text-sm text-muted-foreground truncate">{result.bio}</div>
-                      )}
-                    </div>
-                  </div>
+                  <UserIdentityButton
+                    user={publicUserToUser(result)}
+                    onViewProfile={onViewUserProfile}
+                  />
                   <Button
                     size="sm"
                     className="shrink-0 ml-2"
@@ -291,6 +300,7 @@ export function FriendsPage({
                 <FriendRow
                   key={friend.id}
                   friend={friend}
+                  onViewProfile={onViewUserProfile}
                   actions={
                     <Button
                       size="sm"
@@ -342,21 +352,27 @@ export function FriendsPage({
             {friendActivity.map((activity) => (
               <Card key={activity.friend.id}>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-3">
-                    <Avatar className="w-8 h-8">
-                      <AvatarImage
-                        src={activity.friend.avatar}
-                        alt={activity.friend.username}
-                        className="object-cover"
-                      />
-                      <AvatarFallback>
-                        {activity.friend.username.slice(0, 1).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span>
-                      <span className="text-foreground">{activity.friend.displayName}</span>{' '}
-                      <span className="text-muted-foreground">@{activity.friend.username}</span>
-                    </span>
+                  <CardTitle className="flex items-center gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => onViewUserProfile(activity.friend.id)}
+                      className="flex items-center gap-3 rounded-md hover:bg-muted/60 transition-colors p-1 -m-1"
+                    >
+                      <Avatar className="w-8 h-8">
+                        <AvatarImage
+                          src={activity.friend.avatar}
+                          alt={activity.friend.username}
+                          className="object-cover"
+                        />
+                        <AvatarFallback>
+                          {activity.friend.username.slice(0, 1).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>
+                        <span className="text-foreground">{activity.friend.displayName}</span>{' '}
+                        <span className="text-muted-foreground">@{activity.friend.username}</span>
+                      </span>
+                    </button>
                     <Badge variant="secondary">Recently Added</Badge>
                   </CardTitle>
                 </CardHeader>

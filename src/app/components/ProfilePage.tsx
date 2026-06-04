@@ -1,29 +1,92 @@
-import { useState, useEffect } from 'react';
-import type { User, UserStats, MediaItem } from '../types/media';
+import { useState, useEffect, useMemo } from 'react';
+import type { User, MediaItem } from '../types/media';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { UserAvatar } from './UserAvatar';
-import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Film, Tv, Sparkles, BookOpen, Book, Trophy, Activity, TrendingUp, Pencil } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
+import { Film, Tv, Sparkles, BookOpen, Book, Activity, Pencil } from 'lucide-react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { EditProfileDialog } from './EditProfileDialog';
 import { getUserProfile } from '../supabase/users';
+import { analyticsMediaItems, computeGenreCounts, computeMediaTypeCounts } from '../data/analytics';
+import { DEFAULT_ACCENT_COLOR } from '../data/defaults';
+import { DEFAULT_MEDIA_TYPES, formatMediaTypeLabel } from '../data/mediaOptions';
 
 interface ProfilePageProps {
   user: User;
-  stats: UserStats;
   mediaItems: MediaItem[];
   accentColor?: string;
   onUpdateProfile?: (data: { displayName: string; bio: string; avatar?: string }) => void | Promise<void>;
 }
 
-export function ProfilePage({ user, stats, mediaItems, accentColor, onUpdateProfile }: ProfilePageProps) {
+const typeIconMap: Record<string, { icon: typeof Film }> = {
+  movie: { icon: Film },
+  tv: { icon: Tv },
+  anime: { icon: Sparkles },
+  comic: { icon: BookOpen },
+  book: { icon: Book },
+};
+
+function mediaTypeStatLabel(type: string, count: number): string {
+  const base = formatMediaTypeLabel(type);
+  if (type === 'tv') return count === 1 ? base : `${base}s`;
+  return count === 1 ? base : `${base}s`;
+}
+
+function buildLastTwelveMonthsActivity(items: MediaItem[]) {
+  const now = new Date();
+  const buckets: { month: string; watched: number; sortKey: number }[] = [];
+
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    buckets.push({
+      month: d.toLocaleString('default', { month: 'short' }),
+      watched: 0,
+      sortKey: d.getFullYear() * 12 + d.getMonth(),
+    });
+  }
+
+  analyticsMediaItems(items).forEach((item) => {
+      const dateStr = item.dateCompleted ?? item.dateAdded;
+      const date = new Date(dateStr);
+      if (Number.isNaN(date.getTime())) return;
+      const key = date.getFullYear() * 12 + date.getMonth();
+      const bucket = buckets.find((b) => b.sortKey === key);
+      if (bucket) bucket.watched += 1;
+    });
+
+  return buckets.map(({ month, watched }) => ({ month, watched }));
+}
+
+function sortMediaTypes(types: string[]): string[] {
+  const order = DEFAULT_MEDIA_TYPES as readonly string[];
+  return [...types].sort((a, b) => {
+    const ai = order.indexOf(a.toLowerCase());
+    const bi = order.indexOf(b.toLowerCase());
+    const aRank = ai === -1 ? order.length : ai;
+    const bRank = bi === -1 ? order.length : bi;
+    if (aRank !== bRank) return aRank - bRank;
+    return a.localeCompare(b);
+  });
+}
+
+export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: ProfilePageProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(user);
 
   useEffect(() => {
-    setCurrentUser(user);
-  }, [user]);
+    setCurrentUser({
+      ...user,
+      bio: user.bio ?? '',
+    });
+  }, [user.id, user.displayName, user.username, user.bio, user.avatar]);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,93 +114,39 @@ export function ProfilePage({ user, stats, mediaItems, accentColor, onUpdateProf
 
   const handleSaveProfile = async (data: { displayName: string; bio: string; avatar?: string }) => {
     await onUpdateProfile?.(data);
-  };
-  // Define icon mapping for known types
-  const typeIconMap: Record<string, { icon: any; color: string }> = {
-    'movie': { icon: Film, color: 'text-purple-500' },
-    'tv': { icon: Tv, color: 'text-blue-500' },
-    'anime': { icon: Sparkles, color: 'text-pink-500' },
-    'comic': { icon: BookOpen, color: 'text-orange-500' },
-    'book': { icon: Book, color: 'text-green-500' },
+    setCurrentUser((prev) => ({
+      ...prev,
+      displayName: data.displayName.trim(),
+      bio: data.bio,
+      avatar: data.avatar ?? prev.avatar,
+    }));
   };
 
-  // Get all unique media types from stats
-  const allTypes = stats.customTypeCounts || {};
-  const statCards = Object.entries(allTypes)
-    .filter(([_, count]) => count > 0)
-    .map(([type, count]) => {
-      const typeConfig = typeIconMap[type.toLowerCase()] || { icon: Sparkles, color: 'text-gray-500' };
-      const label = (type.toLowerCase() === 'tv' ? 'TV Show' : type.charAt(0).toUpperCase() + type.slice(1)) + (type.toLowerCase() === 'tv' ? 's' : count === 1 ? '' : 's');
-      
+  const chartColor = accentColor ?? DEFAULT_ACCENT_COLOR;
+
+  const typeCounts = useMemo(() => computeMediaTypeCounts(mediaItems), [mediaItems]);
+
+  const statCards = useMemo(() => {
+    const entries = Object.entries(typeCounts).filter(([, count]) => count > 0);
+
+    return sortMediaTypes(entries.map(([type]) => type)).map((type) => {
+      const count = typeCounts[type];
+      const key = type.toLowerCase();
+      const typeConfig = typeIconMap[key] ?? { icon: Sparkles };
+
       return {
+        type,
         icon: typeConfig.icon,
-        label: label,
+        label: mediaTypeStatLabel(type, count),
         value: count,
-        color: typeConfig.color,
       };
     });
+  }, [typeCounts]);
 
-  // Genre distribution
-  const genreData = mediaItems
-    .filter(item => item.status === 'completed')
-    .flatMap(item => item.genre)
-    .reduce((acc, genre) => {
-      acc[genre] = (acc[genre] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+  const genreChartData = useMemo(() => computeGenreCounts(mediaItems), [mediaItems]);
 
-  const genreChartData = Object.entries(genreData)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
-
-  // Media type distribution
-  const typeColorMap: Record<string, string> = {
-    'movie': '#8b5cf6',
-    'tv': '#3b82f6',
-    'anime': '#ec4899',
-    'comic': '#f97316',
-    'book': '#22c55e',
-  };
-
-  const colors = ['#8b5cf6', '#3b82f6', '#ec4899', '#f97316', '#22c55e', '#14b8a6', '#f59e0b', '#ef4444'];
-
-  const typeData = Object.entries(allTypes)
-    .filter(([_, count]) => count > 0)
-    .map(([type, count], index) => ({
-      name: (type.toLowerCase() === 'tv' ? 'TV Show' : type.charAt(0).toUpperCase() + type.slice(1)) + (type.toLowerCase() === 'tv' ? 's' : count === 1 ? '' : 's'),
-      value: count,
-      color: typeColorMap[type.toLowerCase()] || colors[index % colors.length],
-    }));
-
-  // Monthly activity (mock data for last 6 months)
-  const monthlyData = [
-    { month: 'Jun', watched: 18 },
-    { month: 'Jul', watched: 24 },
-    { month: 'Aug', watched: 20 },
-    { month: 'Sep', watched: 28 },
-    { month: 'Oct', watched: 32 },
-    { month: 'Nov', watched: 34 },
-  ];
-
-  // Status breakdown - filter out zero values
-  const statusData = [
-    {
-      name: 'Completed',
-      value: mediaItems.filter(i => i.status === 'completed').length,
-      color: '#22c55e',
-    },
-    {
-      name: 'In Progress',
-      value: mediaItems.filter(i => i.status === 'ongoing').length,
-      color: '#3b82f6',
-    },
-    {
-      name: 'Want to Watch',
-      value: mediaItems.filter(i => i.status === 'not-started').length,
-      color: '#eab308',
-    },
-  ].filter(item => item.value > 0);
+  const monthlyData = useMemo(() => buildLastTwelveMonthsActivity(mediaItems), [mediaItems]);
+  const genreMax = genreChartData[0]?.value ?? 1;
 
   return (
     <>
@@ -150,189 +159,131 @@ export function ProfilePage({ user, stats, mediaItems, accentColor, onUpdateProf
         accentColor={accentColor}
         onSave={handleSaveProfile}
       />
-      
+
       <div className="space-y-6 max-w-7xl mx-auto">
         <Card>
-        <CardContent className="pt-6">
-          <div className="text-center">
-            <div className="flex justify-center mb-6">
-              <UserAvatar
-                displayName={currentUser.displayName}
-                avatar={currentUser.avatar}
-                size="lg"
-                accentColor={accentColor}
-              />
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <div className="flex justify-center mb-6">
+                <UserAvatar
+                  displayName={currentUser.displayName}
+                  avatar={currentUser.avatar}
+                  size="lg"
+                  accentColor={accentColor}
+                />
+              </div>
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <h1>{currentUser.displayName}</h1>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  onClick={() => setEditDialogOpen(true)}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-muted-foreground mb-4">@{currentUser.username}</p>
+              {currentUser.bio ? (
+                <p className="text-muted-foreground mb-4 max-w-lg mx-auto whitespace-pre-wrap">
+                  {currentUser.bio}
+                </p>
+              ) : (
+                <p className="text-muted-foreground mb-4 italic">Add a bio in Edit profile</p>
+              )}
             </div>
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <h1>{currentUser.displayName}</h1>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5"
-                onClick={() => setEditDialogOpen(true)}
-              >
-                <Pencil className="w-4 h-4" />
-              </Button>
+          </CardContent>
+        </Card>
+
+        <div>
+          <h2 className="mb-4">Analytics</h2>
+
+          {statCards.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 mb-6">
+              {statCards.map((stat) => {
+                const Icon = stat.icon;
+                return (
+                  <div key={stat.type} className="flex flex-col items-center gap-2 min-w-0">
+                    <div
+                      className="aspect-square w-full max-w-[96px] rounded-xl flex flex-col items-center justify-center shadow-sm text-white"
+                      style={{ backgroundColor: chartColor }}
+                    >
+                      <Icon className="w-6 h-6 mb-1 shrink-0" />
+                      <span className="text-2xl font-semibold leading-none">{stat.value}</span>
+                    </div>
+                    <p className="text-xs text-center text-muted-foreground leading-tight px-1">
+                      {stat.label}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
-            <p className="text-muted-foreground mb-4">@{currentUser.username}</p>
-            {currentUser.bio && (
-              <p className="text-muted-foreground mb-4">{currentUser.bio}</p>
-            )}
+          )}
+
+          <div className="grid grid-cols-1 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Genres</CardTitle>
+              </CardHeader>
+              <CardContent className="min-w-0">
+                {genreChartData.length > 0 ? (
+                  <ul className="space-y-3">
+                    {genreChartData.map(({ name, value }) => (
+                      <li key={name}>
+                        <div className="flex items-center justify-between gap-3 mb-1.5 text-sm">
+                          <span className="font-medium truncate">{name}</span>
+                          <span className="text-muted-foreground tabular-nums shrink-0">{value}</span>
+                        </div>
+                        <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-[width] duration-300"
+                            style={{
+                              width: `${(value / genreMax) * 100}%`,
+                              backgroundColor: chartColor,
+                            }}
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                    No genres in your library yet
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle>Monthly Activity</CardTitle>
+                <Activity className="w-4 h-4" style={{ color: chartColor }} />
+              </CardHeader>
+              <CardContent className="min-w-0">
+                <div className="w-full h-[420px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={monthlyData} margin={{ left: 4, right: 16, top: 8, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis allowDecimals={false} width={32} />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="watched"
+                        name="Activity"
+                        stroke={chartColor}
+                        strokeWidth={2}
+                        dot={{ r: 4, fill: chartColor }}
+                        activeDot={{ r: 6, fill: chartColor }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
-
-      <div>
-        <h2 className="mb-4">Analytics</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {statCards.map((stat) => {
-            const Icon = stat.icon;
-            return (
-              <Card key={stat.label}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Icon className={`w-4 h-4 ${stat.color}`} />
-                    {stat.label}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl">{stat.value}</div>
-                </CardContent>
-              </Card>
-            );
-          })}
         </div>
       </div>
-
-      <div>
-        <div className="grid grid-cols-1 gap-4 mb-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm">Total Watched</CardTitle>
-              <Activity className="w-4 h-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl">{stats.totalWatched}</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Favorite Genres</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {genreChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={genreChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  No genre data yet
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Media Type Distribution</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {typeData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={typeData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {typeData.map((entry, index) => (
-                        <Cell key={`type-cell-${entry.name}-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  No media type data yet
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Monthly Activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line 
-                    type="monotone" 
-                    dataKey="watched" 
-                    stroke="#8b5cf6" 
-                    strokeWidth={2}
-                    dot={{ r: 4 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Status Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {statusData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={statusData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
-                      fill="#8884d8"
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {statusData.map((entry, index) => (
-                        <Cell key={`status-cell-${entry.name}-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                  No status data yet
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
     </>
   );
 }

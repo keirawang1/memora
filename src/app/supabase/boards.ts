@@ -127,6 +127,40 @@ export async function fetchBoards(mediaItems?: MediaItem[]): Promise<Board[]> {
   return sortBoardsWithAllFirst(boards);
 }
 
+export async function fetchPublicBoardsForUser(userId: string): Promise<Board[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('You must be signed in to view public boards');
+  }
+
+  const primary = await supabase
+    .from('boards')
+    .select(BOARD_SELECT)
+    .eq('user_id', userId)
+    .eq('is_public', true)
+    .order('created_at', { ascending: true });
+
+  let rows: DbBoard[] = [];
+
+  if (!primary.error) {
+    rows = (primary.data as DbBoard[]) ?? [];
+  } else {
+    const fallback = await supabase
+      .from('boards')
+      .select(BOARD_SELECT_FALLBACK)
+      .eq('user_id', userId)
+      .eq('is_public', true)
+      .order('created_at', { ascending: true });
+
+    if (fallback.error) throw fallback.error;
+    rows = (fallback.data as DbBoard[]) ?? [];
+  }
+
+  return rows
+    .map(mapDbBoardToBoard)
+    .filter((board) => !isAllBoard(board));
+}
+
 export async function createBoard(input: BoardInput): Promise<Board> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {

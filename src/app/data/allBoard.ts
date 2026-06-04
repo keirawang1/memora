@@ -1,4 +1,4 @@
-import type { Board } from '../types/media';
+import type { Board, MediaItem } from '../types/media';
 
 export const ALL_BOARD_NAME = 'All';
 
@@ -21,4 +21,15 @@ export function filterBoardsForDisplay(boards: Board[], showAllBoard: boolean): 
 export function excludeAllBoardFromSelection(boardIds: string[], allBoardId: string | null): string[] {
   if (!allBoardId) return boardIds;
   return boardIds.filter((id) => id !== allBoardId);
+}
+
+export function mediaBelongsToBoard(item: MediaItem, board: Board): boolean {
+  if (isAllBoard(board)) return true;
+  if (board.mediaIds.includes(item.id)) return true;
+  return item.boardIds?.includes(board.id) ?? false;
+}
+
+export function getBoardMediaItems(board: Board, mediaItems: MediaItem[]): MediaItem[] {
+  if (isAllBoard(board)) return mediaItems;
+  return mediaItems.filter((item) => mediaBelongsToBoard(item, board));
 }

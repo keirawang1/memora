@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './app/components/ui/tabs';
 import { LibraryPage } from './app/components/LibraryPage';
 import { BoardDetailPage } from './app/components/BoardDetailPage';
@@ -8,6 +8,7 @@ import { AddMediaDialog } from './app/components/AddMediaDialog';
 import { AddBoardDialog } from './app/components/AddBoardDialog';
 import { MediaDetailDialog } from './app/components/MediaDetailDialog';
 import { ProfilePage } from './app/components/ProfilePage';
+import { UserProfilePage } from './app/components/UserProfilePage';
 import { UserAvatar } from './app/components/UserAvatar';
 import { SettingsDialog } from './app/components/SettingsDialog';
 import { Button } from './app/components/ui/button';
@@ -15,8 +16,15 @@ import {
   mockRecommendations,
   mockFriendActivity
 } from './app/data/mockData';
-import { getDefaultBoards, createDefaultUser } from './app/data/defaults';
-import { filterBoardsForDisplay, isAllBoard, sortBoardsWithAllFirst } from './app/data/allBoard';
+import { DEFAULT_ACCENT_COLOR, getDefaultBoards, createDefaultUser } from './app/data/defaults';
+import { computeMediaTypeCounts } from './app/data/analytics';
+import { isValidAccentHex } from './app/utils/accentColor';
+import {
+  filterBoardsForDisplay,
+  getBoardMediaItems,
+  isAllBoard,
+  sortBoardsWithAllFirst,
+} from './app/data/allBoard';
 import type { MediaItem, Friend, Board, UserStats, User } from './app/types/media';
 import { Library, User as UserIcon, Users, Sparkles, Settings, LogOut } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
@@ -40,8 +48,10 @@ import {
 } from './app/supabase/friends';
 import {
   ensureUserProfile,
+  getUserAccentColor,
   getUserProfile,
   getUserTagPreferences,
+  updateUserAccentColor,
   updateUserGenres,
   updateUserMediaTypes,
   updateUserProfile,
@@ -61,7 +71,8 @@ function App() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('library');
   const [showProfile, setShowProfile] = useState(false);
-  const [accentColor, setAccentColor] = useState('#5C2B17');
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const [accentColor, setAccentColor] = useState(DEFAULT_ACCENT_COLOR);
   const [user, setUser] = useState(createDefaultUser());
   const [userStats, setUserStats] = useState<UserStats>({
     totalWatched: 0,
@@ -79,6 +90,7 @@ function App() {
   const [showAllBoard, setShowAllBoard] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
+  const accentSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadUserTagPreferences = async (userId: string) => {
     try {
@@ -96,6 +108,12 @@ function App() {
   const loadLibraryForUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
+    try {
+      setAccentColor(await getUserAccentColor(user.id));
+    } catch {
+      // Keep current accent if load fails
+    }
 
     let fetchedMedia: MediaItem[] = [];
     try {
@@ -160,8 +178,10 @@ function App() {
     setCustomGenres([]);
     setCustomMediaTypes([]);
     setShowAllBoard(true);
+    setAccentColor(DEFAULT_ACCENT_COLOR);
     setUser(createDefaultUser());
     setShowProfile(false);
+    setViewingUserId(null);
     setSelectedBoard(null);
     setFriends([]);
     toast.info('Signed out');
@@ -496,6 +516,50 @@ function App() {
 
   const handleAccentColorChange = (color: string) => {
     setAccentColor(color);
+    if (!isValidAccentHex(color)) return;
+
+    if (accentSaveTimerRef.current) {
+      clearTimeout(accentSaveTimerRef.current);
+    }
+
+    accentSaveTimerRef.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          if (!authUser) return;
+          const saved = await updateUserAccentColor(authUser.id, color);
+          setAccentColor(saved);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Failed to save accent color';
+          toast.error(message);
+        }
+      })();
+    }, 350);
+  };
+
+  const handleViewUserProfile = (userId: string) => {
+    if (userId === user.id) {
+      setViewingUserId(null);
+      setShowProfile(true);
+      setSelectedBoard(null);
+      return;
+    }
+    setViewingUserId(userId);
+    setShowProfile(false);
+    setSelectedBoard(null);
+  };
+
+  const handleGoToLibrary = () => {
+    setViewingUserId(null);
+    setShowProfile(false);
+    setSelectedBoard(null);
+    setActiveTab('library');
+  };
+
+  const handleViewOwnProfile = () => {
+    setViewingUserId(null);
+    setShowProfile(true);
+    setSelectedBoard(null);
   };
 
   const handleUpdateProfile = async (data: { displayName: string; bio: string; avatar?: string }) => {
@@ -543,15 +607,7 @@ function App() {
 
   // Calculate stats dynamically from mediaItems
   const calculatedStats: UserStats = useMemo(() => {
-    const typeCount: Record<string, number> = {};
-    
-    mediaItems.forEach(item => {
-      if (item.status === 'completed') {
-        const type = item.type.toLowerCase();
-        typeCount[type] = (typeCount[type] || 0) + 1;
-      }
-    });
-
+    const typeCount = computeMediaTypeCounts(mediaItems);
     const totalWatched = Object.values(typeCount).reduce((sum, count) => sum + count, 0);
 
     return {
@@ -591,7 +647,12 @@ function App() {
       <div className="border-b">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between py-4">
-            <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleGoToLibrary}
+              className="flex items-center gap-2 rounded-lg hover:opacity-90 transition-opacity text-left"
+              aria-label="Go to library"
+            >
               <div className="w-20 h-20 rounded-lg flex items-center justify-center">
                 <img src={logoImage} alt="Memora" className="w-20 h-20" />
               </div>
@@ -599,7 +660,7 @@ function App() {
                 <h2 className="tracking-tight">Memora</h2>
                 <p className="text-xs text-muted-foreground">Your taste, redefined.</p>
               </div>
-            </div>
+            </button>
             
             <div className="flex items-center gap-3">
               <div className="hidden sm:block text-right">
@@ -621,7 +682,7 @@ function App() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => setShowProfile(true)}>
+                  <DropdownMenuItem onClick={handleViewOwnProfile}>
                     <UserIcon className="w-4 h-4 mr-2" />
                     View Profile
                   </DropdownMenuItem>
@@ -643,7 +704,13 @@ function App() {
       </div>
 
       <div className="container mx-auto px-4 py-6">
-        {showProfile ? (
+        {viewingUserId ? (
+          <UserProfilePage
+            userId={viewingUserId}
+            onBack={() => setViewingUserId(null)}
+            accentColor={accentColor}
+          />
+        ) : showProfile ? (
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <Button variant="ghost" onClick={() => setShowProfile(false)}>
@@ -653,7 +720,6 @@ function App() {
             </div>
             <ProfilePage
               user={user}
-              stats={calculatedStats}
               mediaItems={mediaItems}
               accentColor={accentColor}
               onUpdateProfile={handleUpdateProfile}
@@ -680,13 +746,10 @@ function App() {
             {selectedBoard ? (
               <BoardDetailPage
                 board={boards.find(b => b.id === selectedBoard.id) ?? selectedBoard}
-                mediaItems={
-                  isAllBoard(boards.find(b => b.id === selectedBoard.id) ?? selectedBoard)
-                    ? mediaItems
-                    : mediaItems.filter((item) =>
-                        (boards.find(b => b.id === selectedBoard.id) ?? selectedBoard).mediaIds.includes(item.id),
-                      )
-                }
+                mediaItems={getBoardMediaItems(
+                  boards.find(b => b.id === selectedBoard.id) ?? selectedBoard,
+                  mediaItems,
+                )}
                 onBack={handleBackToLibrary}
                 onMediaClick={handleMediaClick}
                 onUpdateBoard={handleUpdateBoard}
@@ -697,6 +760,7 @@ function App() {
             ) : (
               <LibraryPage
                 boards={visibleBoards}
+                mediaItems={mediaItems}
                 onBoardClick={handleBoardClick}
                 onCreateBoard={handleCreateBoard}
                 accentColor={accentColor}
@@ -724,6 +788,7 @@ function App() {
               onRejectFriend={handleRejectFriend}
               onUnfriend={handleUnfriend}
               onMediaClick={handleMediaClick}
+              onViewUserProfile={handleViewUserProfile}
             />
           </TabsContent>
           </Tabs>

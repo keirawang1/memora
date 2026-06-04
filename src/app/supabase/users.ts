@@ -1,3 +1,5 @@
+import { DEFAULT_ACCENT_COLOR } from '../data/defaults';
+import { normalizeAccentColor } from '../utils/accentColor';
 import { supabase } from './client';
 import { getAvatarDisplayUrl, resolveAvatarUrl } from './storage';
 
@@ -7,6 +9,7 @@ export interface UserProfile {
   email: string;
   avatar?: string;
   bio?: string;
+  accentColor: string;
 }
 
 export interface PublicUser {
@@ -32,11 +35,47 @@ interface DbUser {
   genres: string[] | null;
   media_types: string[] | null;
   show_all_board: boolean | null;
+  accent_color: string | null;
 }
 
-type ProfileRow = Pick<DbUser, 'username' | 'display_name' | 'email' | 'avatar_url' | 'bio'>;
+type ProfileRow = Pick<
+  DbUser,
+  'username' | 'display_name' | 'email' | 'avatar_url' | 'bio' | 'accent_color'
+>;
+
+async function fetchUserBio(authUserId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('bio')
+    .eq('user_id', authUserId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingColumnError(error)) return null;
+    throw error;
+  }
+
+  const bio = (data as { bio?: string | null } | null)?.bio;
+  return bio?.trim() ? bio.trim() : null;
+}
+
+async function fetchUserAccentColor(authUserId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('accent_color')
+    .eq('user_id', authUserId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingColumnError(error)) return DEFAULT_ACCENT_COLOR;
+    throw error;
+  }
+
+  return normalizeAccentColor((data as { accent_color?: string | null } | null)?.accent_color);
+}
 
 const PROFILE_SELECT_ATTEMPTS = [
+  'username, display_name, email, avatar, avatar_url, bio, accent_color',
   'username, display_name, email, avatar, avatar_url, bio',
   'username, display_name, email, avatar, avatar_url',
   'username, display_name, email, avatar, bio',
@@ -92,6 +131,7 @@ function mapDbUser(row: ProfileRow): UserProfile {
     email: row.email,
     avatar: getAvatarDisplayUrl(storedAvatar),
     bio: row.bio ?? undefined,
+    accentColor: normalizeAccentColor(row.accent_color),
   };
 }
 
@@ -119,6 +159,7 @@ function toProfileRow(row: {
   avatar_url?: string | null;
   avatar?: string | null;
   bio?: string | null;
+  accent_color?: string | null;
 }): ProfileRow {
   return {
     username: row.username,
@@ -126,6 +167,7 @@ function toProfileRow(row: {
     email: row.email,
     avatar_url: readAvatarFromRow(row),
     bio: row.bio ?? null,
+    accent_color: row.accent_color ?? null,
   };
 }
 
@@ -200,9 +242,50 @@ function generateUsername(email: string): string {
 }
 
 export async function getUserProfile(authUserId: string): Promise<UserProfile | null> {
-  const row = await fetchProfileRow(authUserId);
+  const [row, accentColor, bio] = await Promise.all([
+    fetchProfileRow(authUserId),
+    fetchUserAccentColor(authUserId),
+    fetchUserBio(authUserId),
+  ]);
   if (!row) return null;
-  return mapDbUser(row);
+  return mapDbUser({ ...row, accent_color: accentColor, bio: bio ?? row.bio });
+}
+
+export async function getUserAccentColor(authUserId: string): Promise<string> {
+  return fetchUserAccentColor(authUserId);
+}
+
+export async function getPublicUserProfile(userId: string): Promise<PublicUser | null> {
+  let profile: PublicUser | null = null;
+
+  for (const select of PUBLIC_SELECT_ATTEMPTS) {
+    const { data, error } = await supabase
+      .from('users')
+      .select(select)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!error && data) {
+      profile = mapPublicUser(data as unknown as Parameters<typeof mapPublicUser>[0]);
+      break;
+    }
+    if (!error) {
+      return null;
+    }
+
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+  }
+
+  if (!profile) return null;
+
+  try {
+    const bio = await fetchUserBio(userId);
+    return { ...profile, bio: bio ?? undefined };
+  } catch {
+    return profile;
+  }
 }
 
 export async function getPublicUsersByIds(userIds: string[]): Promise<PublicUser[]> {
@@ -398,6 +481,27 @@ export async function updateUserMediaTypes(
   if (error) throw error;
 }
 
+export async function updateUserAccentColor(
+  authUserId: string,
+  accentColor: string,
+): Promise<string> {
+  const normalized = normalizeAccentColor(accentColor);
+
+  const { error } = await supabase
+    .from('users')
+    .update({ accent_color: normalized })
+    .eq('user_id', authUserId);
+
+  if (error) {
+    if (isMissingColumnError(error)) {
+      throw new Error('Accent color is not available yet. Run the latest database migration.');
+    }
+    throw error;
+  }
+
+  return normalized;
+}
+
 export async function createUserProfile(
   authUserId: string,
   email: string,
@@ -411,6 +515,7 @@ export async function createUserProfile(
     username,
     display_name: displayName,
     show_all_board: true,
+    accent_color: DEFAULT_ACCENT_COLOR,
   };
 
   let lastError: { code?: string; message?: string } | null = null;

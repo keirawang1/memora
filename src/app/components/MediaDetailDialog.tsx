@@ -31,9 +31,10 @@ interface MediaDetailDialogProps {
   onDelete?: (mediaId: string) => void;
   customGenres: string[];
   customMediaTypes: string[];
+  readOnly?: boolean;
 }
 
-const watchStatuses: WatchStatus[] = ['completed', 'ongoing', 'not-started', 'dropped'];
+const watchStatuses: WatchStatus[] = ['completed', 'in-progress', 'not-started', 'dropped'];
 
 export function MediaDetailDialog({
   media,
@@ -45,6 +46,7 @@ export function MediaDetailDialog({
   onDelete,
   customGenres,
   customMediaTypes,
+  readOnly = false,
 }: MediaDetailDialogProps) {
   const [notes, setNotes] = useState(media?.notes || '');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -184,15 +186,15 @@ export function MediaDetailDialog({
 
   const statusColors = {
     'completed': 'bg-green-500',
-    'ongoing': 'bg-blue-500',
+    'in-progress': 'bg-blue-500',
     'not-started': 'bg-yellow-500',
     'dropped': 'bg-red-500',
   };
 
   const statusLabels = {
     'completed': 'Completed',
-    'ongoing': 'In Progress',
-    'not-started': 'Want to Watch',
+    'in-progress': 'In Progress',
+    'not-started': 'Not Started',
     'dropped': 'Dropped',
   };
 
@@ -425,7 +427,7 @@ export function MediaDetailDialog({
             <div className="pt-4 border-t">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm">Notes</h3>
-                {!isEditingNotes && (
+                {!readOnly && !isEditingNotes && (
                   <Button 
                     variant="ghost" 
                     size="sm"
@@ -438,7 +440,7 @@ export function MediaDetailDialog({
                   </Button>
                 )}
               </div>
-              {isEditingNotes ? (
+              {!readOnly && isEditingNotes ? (
                 <div className="space-y-2">
                   <Textarea
                     value={notes}
@@ -465,30 +467,35 @@ export function MediaDetailDialog({
                 </div>
               ) : (
                 <div className="text-sm text-muted-foreground min-h-[60px]">
-                  {media.notes || 'No notes yet. Click edit to add your thoughts!'}
+                  {media.notes || (readOnly ? 'No notes' : 'No notes yet. Click edit to add your thoughts!')}
                 </div>
               )}
             </div>
 
+            {(gallery.length > 0 || !readOnly) && (
             <div className="pt-4 border-t">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm">Gallery</h3>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => document.getElementById('gallery-upload')?.click()}
-                >
-                  <Upload className="w-3 h-3 mr-2" />
-                  Add Images
-                </Button>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleGalleryImageUpload}
-                  className="hidden"
-                  id="gallery-upload"
-                />
+                {!readOnly && (
+                  <>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => document.getElementById('gallery-upload')?.click()}
+                    >
+                      <Upload className="w-3 h-3 mr-2" />
+                      Add Images
+                    </Button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleGalleryImageUpload}
+                      className="hidden"
+                      id="gallery-upload"
+                    />
+                  </>
+                )}
               </div>
               {gallery.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
@@ -501,12 +508,14 @@ export function MediaDetailDialog({
                           className="w-full h-full object-cover"
                         />
                       </div>
-                      <button
-                        onClick={() => handleRemoveGalleryImage(index)}
-                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      {!readOnly && (
+                        <button
+                          onClick={() => handleRemoveGalleryImage(index)}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -516,7 +525,9 @@ export function MediaDetailDialog({
                 </div>
               )}
             </div>
+            )}
 
+            {!readOnly && (
             <div className="flex gap-2 pt-4 border-t">
               <Button
                 variant="outline"
@@ -544,6 +555,7 @@ export function MediaDetailDialog({
                 Delete
               </Button>
             </div>
+            )}
           </div>
         )}
       </DialogContent>

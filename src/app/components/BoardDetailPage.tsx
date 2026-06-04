@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
+import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Upload } from 'lucide-react';
 import {
@@ -34,9 +35,10 @@ interface BoardDetailPageProps {
   customMediaTypes: string[];
   customGenres: string[];
   onDeleteBoard?: (boardId: string) => void;
+  readOnly?: boolean;
 }
 
-const watchStatuses: WatchStatus[] = ['completed', 'ongoing', 'not-started', 'dropped'];
+const watchStatuses: WatchStatus[] = ['completed', 'in-progress', 'not-started', 'dropped'];
 
 export function BoardDetailPage({ 
   board, 
@@ -47,6 +49,7 @@ export function BoardDetailPage({
   onDeleteBoard,
   customMediaTypes,
   customGenres,
+  readOnly = false,
 }: BoardDetailPageProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -61,7 +64,7 @@ export function BoardDetailPage({
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
-  const readOnlyBoard = isAllBoard(board);
+  const readOnlyBoard = readOnly || isAllBoard(board);
 
   const allGenres = useMemo(
     () => [...DEFAULT_GENRES, ...customGenres],

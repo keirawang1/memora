@@ -26,7 +26,7 @@ interface AddMediaDialogProps {
   accentColor?: string;
 }
 
-const watchStatuses: WatchStatus[] = ['completed', 'ongoing', 'not-started', 'dropped'];
+const watchStatuses: WatchStatus[] = ['completed', 'in-progress', 'not-started', 'dropped'];
 
 export function AddMediaDialog({
   onAdd,

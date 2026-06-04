@@ -1,14 +1,17 @@
 import type { Board } from '../types/media';
+import { DEFAULT_ACCENT_COLOR } from '../data/defaults';
+import { accentGradientBackground } from '../utils/accentColor';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Image, Plus } from 'lucide-react';
 
 interface BoardCardProps {
   board: Board;
   itemCount: number;
+  accentColor?: string;
   onClick?: () => void;
 }
 
-export function BoardCard({ board, itemCount, onClick }: BoardCardProps) {
+export function BoardCard({ board, itemCount, accentColor = DEFAULT_ACCENT_COLOR, onClick }: BoardCardProps) {
   const isEmpty = itemCount === 0;
 
   return (
@@ -16,7 +19,10 @@ export function BoardCard({ board, itemCount, onClick }: BoardCardProps) {
       className="group cursor-pointer transition-all hover:scale-105"
       onClick={onClick}
     >
-      <div className="aspect-square relative bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg overflow-hidden mb-2">
+      <div
+        className="aspect-square relative rounded-lg overflow-hidden mb-2"
+        style={{ background: accentGradientBackground(accentColor) }}
+      >
         {board.coverImage ? (
           <ImageWithFallback
             src={board.coverImage}

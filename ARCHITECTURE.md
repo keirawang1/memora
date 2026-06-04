@@ -241,7 +241,7 @@ Dynamic accent color applied via inline styles:
 
 **WatchStatus** - Union type
 
-- 'completed' | 'not-started' | 'ongoing' | 'dropped'
+- 'completed' | 'not-started' | 'in-progress' | 'dropped'
 
 **Genre** - String (extensible for custom genres)
 

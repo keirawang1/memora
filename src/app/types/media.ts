@@ -1,5 +1,5 @@
 export type MediaType = string;
-export type WatchStatus = 'completed' | 'not-started' | 'ongoing' | 'dropped';
+export type WatchStatus = 'completed' | 'not-started' | 'in-progress' | 'dropped';
 export type Genre = string;
 
 export interface MediaItem {
@@ -15,6 +15,7 @@ export interface MediaItem {
   dateStarted?: string;
   dateCompleted?: string;
   notes?: string;
+  boardIds?: string[];
 }
 
 export interface Board {

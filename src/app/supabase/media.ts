@@ -1,11 +1,12 @@
 import type { MediaItem } from '../types/media';
+import { normalizeWatchStatus, parseGenresFromDb } from '../data/analytics';
 import { excludeAllBoardFromSelection } from '../data/allBoard';
 import { ensureAllBoard, syncAllBoardMedia } from './allBoardSync';
 import { supabase } from './client';
 import { resolveCoverImageUrl } from './storage';
 
 export type MediaType = string;
-export type WatchStatus = 'completed' | 'not-started' | 'ongoing' | 'dropped';
+export type WatchStatus = 'completed' | 'not-started' | 'in-progress' | 'dropped';
 export type Genre = string;
 
 export interface CreateMediaInput {
@@ -55,6 +56,8 @@ interface DbMedia {
 
 interface DbBoard {
   board_id: string;
+  user_id?: string | null;
+  is_public?: boolean;
   media: string[] | null;
 }
 
@@ -63,8 +66,8 @@ function mapDbMediaToMedia(row: DbMedia): MediaItem {
     id: row.media_id,
     title: row.title,
     type: row.type,
-    genre: row.genres ?? [],
-    status: row.status as WatchStatus,
+    genre: parseGenresFromDb(row.genres),
+    status: normalizeWatchStatus(row.status),
     imageUrl: row.cover ?? '',
     gallery: row.gallery ?? [],
     rating: row.rating ?? undefined,
@@ -72,6 +75,7 @@ function mapDbMediaToMedia(row: DbMedia): MediaItem {
     dateStarted: row.date_started ?? undefined,
     dateCompleted: row.date_completed ?? undefined,
     notes: row.notes ?? undefined,
+    boardIds: row.board_ids ?? [],
   };
 }
 
@@ -176,6 +180,39 @@ export async function unlinkBoardFromAllMedia(boardId: string): Promise<void> {
 
     if (updateError) throw updateError;
   }
+}
+
+export async function fetchMediaForPublicBoard(boardId: string): Promise<MediaItem[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('You must be signed in to view public boards');
+  }
+
+  const { data: board, error: boardError } = await supabase
+    .from('boards')
+    .select('board_id, user_id, is_public, media')
+    .eq('board_id', boardId)
+    .eq('is_public', true)
+    .maybeSingle();
+
+  if (boardError) throw boardError;
+  if (!board) return [];
+
+  const mediaIds = (board as DbBoard).media ?? [];
+  if (mediaIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('media')
+    .select('*')
+    .eq('user_id', (board as DbBoard).user_id as string)
+    .in('media_id', mediaIds)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+
+  const items = (data as DbMedia[]).map(mapDbMediaToMedia);
+  const order = new Map(mediaIds.map((id, index) => [id, index]));
+  return items.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 }
 
 export async function fetchMedia(): Promise<MediaItem[]> {

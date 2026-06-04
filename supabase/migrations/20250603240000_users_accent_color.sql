@@ -1,0 +1,2 @@
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS accent_color text NOT NULL DEFAULT '#5C2B17';

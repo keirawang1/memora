@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { Board } from '../types/media';
+import type { Board, MediaItem } from '../types/media';
 import { BoardCard } from './BoardCard';
 import { SearchFilterBar } from './SearchFilterBar';
 import { Plus } from 'lucide-react';
+import { getBoardMediaItems } from '../data/allBoard';
 import {
   boardMatchesTypeFilter,
   formatMediaTypeLabel,
@@ -11,6 +12,7 @@ import {
 
 interface LibraryPageProps {
   boards: Board[];
+  mediaItems: MediaItem[];
   onBoardClick: (board: Board) => void;
   onCreateBoard?: () => void;
   accentColor?: string;
@@ -19,6 +21,7 @@ interface LibraryPageProps {
 
 export function LibraryPage({
   boards,
+  mediaItems,
   onBoardClick,
   onCreateBoard,
   accentColor = '#5C2B17',
@@ -89,12 +92,13 @@ export function LibraryPage({
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
           {filteredBoards.map((board) => {
-            const itemCount = board.mediaIds.length;
+            const itemCount = getBoardMediaItems(board, mediaItems).length;
             return (
               <BoardCard
                 key={board.id}
                 board={board}
                 itemCount={itemCount}
+                accentColor={accentColor}
                 onClick={() => onBoardClick(board)}
               />
             );
