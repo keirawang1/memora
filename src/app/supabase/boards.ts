@@ -25,11 +25,12 @@ interface DbBoard {
   cover_image: string | null;
   media: string[] | null;
   created_at: string;
+  updated_at?: string | null;
   user_id: string | null;
 }
 
 const BOARD_SELECT =
-  'board_id, name, description, type, is_public, is_system, cover_image, media, created_at, user_id';
+  'board_id, name, description, type, is_public, is_system, cover_image, media, created_at, updated_at, user_id';
 
 const BOARD_SELECT_FALLBACK =
   'board_id, name, description, is_public, cover_image, media, created_at, user_id';
@@ -44,8 +45,42 @@ function mapDbBoardToBoard(row: DbBoard): Board {
     isSystem: row.is_system === true || row.name === ALL_BOARD_NAME,
     coverImage: row.cover_image ?? '',
     createdAt: row.created_at?.split('T')[0] ?? '',
+    updatedAt: row.updated_at ?? row.created_at ?? undefined,
     description: row.description ?? undefined,
   };
+}
+
+export async function updateBoardMediaOrder(
+  boardId: string,
+  mediaIds: string[],
+): Promise<Board> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('You must be signed in to reorder media');
+  }
+
+  const { data, error } = await supabase
+    .from('boards')
+    .update({ media: mediaIds })
+    .eq('board_id', boardId)
+    .eq('user_id', user.id)
+    .select(BOARD_SELECT)
+    .single();
+
+  if (error) {
+    const fallback = await supabase
+      .from('boards')
+      .update({ media: mediaIds })
+      .eq('board_id', boardId)
+      .eq('user_id', user.id)
+      .select(BOARD_SELECT_FALLBACK)
+      .single();
+
+    if (fallback.error) throw fallback.error;
+    return mapDbBoardToBoard(fallback.data as DbBoard);
+  }
+
+  return mapDbBoardToBoard(data as DbBoard);
 }
 
 async function fetchBoardRows(userId: string): Promise<DbBoard[]> {

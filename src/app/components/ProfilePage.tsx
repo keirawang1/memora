@@ -117,7 +117,7 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
     setCurrentUser((prev) => ({
       ...prev,
       displayName: data.displayName.trim(),
-      bio: data.bio,
+      bio: data.bio.trim(),
       avatar: data.avatar ?? prev.avatar,
     }));
   };
@@ -189,7 +189,7 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
                   {currentUser.bio}
                 </p>
               ) : (
-                <p className="text-muted-foreground mb-4 italic">Add a bio in Edit profile</p>
+                <p className="text-muted-foreground mb-4 italic">No bio yet</p>
               )}
             </div>
           </CardContent>

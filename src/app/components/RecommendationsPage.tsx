@@ -48,19 +48,14 @@ export function RecommendationsPage({ recommendations, onMediaClick, boards, onA
       <div>
         <h1 className="mb-2 flex items-center gap-2">
           <Sparkles className="w-8 h-8" />
-          Recommendations
+          For You
         </h1>
-        <p className="text-muted-foreground">
-          Personalized suggestions based on your history
-        </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5" />
-            Recommended For You
-            <Badge variant="secondary">{recommendations.length}</Badge>
+            Recommended
           </CardTitle>
         </CardHeader>
         <CardContent>

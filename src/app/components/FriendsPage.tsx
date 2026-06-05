@@ -5,11 +5,14 @@ import { searchUsersByUsername } from '../supabase/users';
 import {
   createPost,
   createPostComment,
+  deletePost,
   fetchFeedPosts,
   fetchPostComments,
+  togglePostLike,
   type FeedPost,
   type PostComment,
 } from '../supabase/posts';
+import { UserAvatar } from './UserAvatar';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
@@ -36,7 +39,16 @@ import {
   MessageCircle,
   ImagePlus,
   Send,
+  Heart,
+  MoreHorizontal,
+  Trash2,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import { cn } from './ui/utils';
 
 type FriendsSection = 'feed' | 'manage';
@@ -44,6 +56,7 @@ type FriendsSection = 'feed' | 'manage';
 interface FriendsPageProps {
   friends: Friend[];
   currentUser: User;
+  accentColor?: string;
   onAddFriend: (user: User) => void;
   onAcceptFriend: (friendId: string) => void;
   onRejectFriend: (friendId: string) => void;
@@ -241,13 +254,19 @@ function PostComposer({
 function PostCard({
   post,
   currentUserId,
+  accentColor,
   onViewProfile,
   onCommentCountChange,
+  onDeleted,
+  onLikeChange,
 }: {
   post: FeedPost;
   currentUserId: string;
+  accentColor?: string;
   onViewProfile: (userId: string) => void;
   onCommentCountChange: (postId: string, delta: number) => void;
+  onDeleted: (postId: string) => void;
+  onLikeChange: (postId: string, likeCount: number, likedByMe: boolean) => void;
 }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<PostComment[]>([]);
@@ -255,6 +274,9 @@ function PostCard({
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [liking, setLiking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const isOwner = post.userId === currentUserId;
 
   const toggleComments = async () => {
     const next = !commentsOpen;
@@ -288,29 +310,73 @@ function PostCard({
 
   const displayCount = commentsOpen && commentsLoaded ? comments.length : post.commentCount;
 
+  const handleToggleLike = async () => {
+    if (liking) return;
+    setLiking(true);
+    try {
+      const result = await togglePostLike(post.id);
+      onLikeChange(post.id, result.likeCount, result.liked);
+    } finally {
+      setLiking(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await deletePost(post.id);
+      onDeleted(post.id);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <Card>
       <CardContent className="pt-6 space-y-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-2">
           <button
             type="button"
             onClick={() => onViewProfile(post.author.id)}
             className="flex items-center gap-3 min-w-0 text-left rounded-md hover:bg-muted/60 transition-colors p-1 -m-1"
           >
-            <Avatar className="w-10 h-10">
-              <AvatarImage src={post.author.avatar} alt={post.author.username} className="object-cover" />
-              <AvatarFallback>{post.author.username.slice(0, 1).toUpperCase()}</AvatarFallback>
-            </Avatar>
+            <UserAvatar
+              displayName={post.author.displayName}
+              avatar={post.author.avatar}
+              size="sm"
+              accentColor={accentColor}
+            />
             <div className="min-w-0">
-              <div className="font-medium truncate">
+              <div className="text-base font-medium truncate">
                 {post.author.displayName}{' '}
                 <span className="text-muted-foreground font-normal">@{post.author.username}</span>
               </div>
-              <div className="text-xs text-muted-foreground">{formatRelativeTime(post.createdAt)}</div>
+              <div className="text-sm text-muted-foreground">{formatRelativeTime(post.createdAt)}</div>
             </div>
           </button>
+          {isOwner && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" className="shrink-0 h-8 w-8">
+                  <MoreHorizontal className="w-4 h-4" />
+                  <span className="sr-only">Post options</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="text-red-600 focus:text-red-600"
+                  disabled={deleting}
+                  onClick={() => void handleDelete()}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete post
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
-        <p className="text-sm whitespace-pre-wrap">{post.body}</p>
+        <p className="text-base whitespace-pre-wrap">{post.body}</p>
         {post.imageUrl && (
           <img
             src={post.imageUrl}
@@ -318,16 +384,32 @@ function PostCard({
             className="w-full max-h-96 rounded-lg border object-cover"
           />
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground -ml-2"
-          onClick={() => void toggleComments()}
-        >
-          <MessageCircle className="w-4 h-4 mr-1" />
-          {displayCount === 0 ? 'Comment' : `${displayCount} comment${displayCount === 1 ? '' : 's'}`}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'text-base text-muted-foreground -ml-2',
+              post.likedByMe && 'text-red-500 hover:text-red-600',
+            )}
+            disabled={liking}
+            onClick={() => void handleToggleLike()}
+          >
+            <Heart className={cn('w-4 h-4 mr-1', post.likedByMe && 'fill-current')} />
+            {post.likeCount === 0 ? 'Like' : `${post.likeCount}`}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-base text-muted-foreground"
+            onClick={() => void toggleComments()}
+          >
+            <MessageCircle className="w-4 h-4 mr-1" />
+            {displayCount === 0 ? 'Comment' : `${displayCount} comment${displayCount === 1 ? '' : 's'}`}
+          </Button>
+        </div>
         {commentsOpen && (
           <div className="space-y-3 border-t pt-3">
             {loadingComments && (
@@ -337,32 +419,29 @@ function PostCard({
               </div>
             )}
             {comments.map((comment) => (
-              <div key={comment.id} className="flex gap-2 text-sm">
+              <div key={comment.id} className="flex items-start gap-2.5">
                 <button
                   type="button"
                   onClick={() => onViewProfile(comment.author.id)}
                   className="shrink-0 rounded-full hover:opacity-80"
                 >
-                  <Avatar className="w-7 h-7">
-                    <AvatarImage
-                      src={comment.author.avatar}
-                      alt={comment.author.username}
-                      className="object-cover"
-                    />
-                    <AvatarFallback className="text-xs">
-                      {comment.author.username.slice(0, 1).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    displayName={comment.author.displayName}
+                    avatar={comment.author.avatar}
+                    size="sm"
+                    accentColor={accentColor}
+                  />
                 </button>
                 <div className="min-w-0 flex-1">
                   <button
                     type="button"
                     onClick={() => onViewProfile(comment.author.id)}
-                    className="font-medium hover:underline"
+                    className="text-base font-medium hover:underline"
                   >
-                    {comment.author.displayName}
+                    {comment.author.displayName}{' '}
+
                   </button>
-                  <span className="text-muted-foreground ml-1">{comment.body}</span>
+                  <p className="text-base text-foreground mt-1 whitespace-pre-wrap">{comment.body}</p>
                 </div>
               </div>
             ))}
@@ -396,9 +475,11 @@ function PostCard({
 
 function FriendsFeed({
   currentUser,
+  accentColor,
   onViewProfile,
 }: {
   currentUser: User;
+  accentColor?: string;
   onViewProfile: (userId: string) => void;
 }) {
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -434,6 +515,18 @@ function FriendsFeed({
     );
   };
 
+  const handleDeleted = (postId: string) => {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  };
+
+  const handleLikeChange = (postId: string, likeCount: number, likedByMe: boolean) => {
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId ? { ...p, likeCount, likedByMe } : p,
+      ),
+    );
+  };
+
   return (
     <div className="space-y-4">
       <PostComposer currentUser={currentUser} onPosted={handlePosted} />
@@ -457,8 +550,11 @@ function FriendsFeed({
           key={post.id}
           post={post}
           currentUserId={currentUser.id}
+          accentColor={accentColor}
           onViewProfile={onViewProfile}
           onCommentCountChange={handleCommentCountChange}
+          onDeleted={handleDeleted}
+          onLikeChange={handleLikeChange}
         />
       ))}
     </div>
@@ -722,6 +818,7 @@ function ManageFriends({
 export function FriendsPage({
   friends,
   currentUser,
+  accentColor,
   onAddFriend,
   onAcceptFriend,
   onRejectFriend,
@@ -732,22 +829,15 @@ export function FriendsPage({
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <div>
-        <h1 className="mb-2">Friends</h1>
-        <p className="text-muted-foreground">
-          Share updates with friends and manage your connections
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 rounded-lg border p-1 bg-muted/30">
+      <div className="grid grid-cols-2 border-b">
         <button
           type="button"
           onClick={() => setSection('feed')}
           className={cn(
-            'rounded-md py-2 text-sm font-medium transition-colors',
+            'py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px',
             section === 'feed'
-              ? 'bg-background shadow-sm text-foreground'
-              : 'text-muted-foreground hover:text-foreground',
+              ? 'border-foreground text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
           )}
         >
           Feed
@@ -756,10 +846,10 @@ export function FriendsPage({
           type="button"
           onClick={() => setSection('manage')}
           className={cn(
-            'rounded-md py-2 text-sm font-medium transition-colors',
+            'py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px',
             section === 'manage'
-              ? 'bg-background shadow-sm text-foreground'
-              : 'text-muted-foreground hover:text-foreground',
+              ? 'border-foreground text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
           )}
         >
           Manage Friends
@@ -767,7 +857,11 @@ export function FriendsPage({
       </div>
 
       {section === 'feed' ? (
-        <FriendsFeed currentUser={currentUser} onViewProfile={onViewUserProfile} />
+        <FriendsFeed
+          currentUser={currentUser}
+          accentColor={accentColor}
+          onViewProfile={onViewUserProfile}
+        />
       ) : (
         <ManageFriends
           friends={friends}

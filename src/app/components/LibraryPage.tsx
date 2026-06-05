@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { Board, MediaItem } from '../types/media';
+import type { SortMode } from '../types/sort';
 import { BoardCard } from './BoardCard';
 import { SearchFilterBar } from './SearchFilterBar';
+import { SortOrderControl } from './SortOrderControl';
+import { ReorderableGrid } from './ReorderableGrid';
 import { Plus } from 'lucide-react';
 import { getBoardMediaItems } from '../data/allBoard';
 import {
@@ -9,6 +12,7 @@ import {
   formatMediaTypeLabel,
   getBoardMediaTypeOptions,
 } from '../data/mediaOptions';
+import { sortBoardsForDisplay } from '../data/sortOrder';
 
 interface LibraryPageProps {
   boards: Board[];
@@ -17,6 +21,10 @@ interface LibraryPageProps {
   onCreateBoard?: () => void;
   accentColor?: string;
   customMediaTypes: string[];
+  boardSortMode: SortMode;
+  boardCustomOrder: string[];
+  onBoardSortModeChange: (mode: SortMode) => void | Promise<void>;
+  onBoardCustomOrderChange: (order: string[]) => void | Promise<void>;
 }
 
 export function LibraryPage({
@@ -26,6 +34,10 @@ export function LibraryPage({
   onCreateBoard,
   accentColor = '#5C2B17',
   customMediaTypes,
+  boardSortMode,
+  boardCustomOrder,
+  onBoardSortModeChange,
+  onBoardCustomOrderChange,
 }: LibraryPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
@@ -36,24 +48,55 @@ export function LibraryPage({
     [customMediaTypes],
   );
 
-  const filteredBoards = boards.filter((board) => {
-    const matchesSearch = board.name
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
-    const matchesType = boardMatchesTypeFilter(board, typeFilters);
-    return matchesSearch && matchesType;
-  });
+  const filteredBoards = useMemo(
+    () =>
+      boards.filter((board) => {
+        const matchesSearch = board.name
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase());
+        const matchesType = boardMatchesTypeFilter(board, typeFilters);
+        return matchesSearch && matchesType;
+      }),
+    [boards, searchQuery, typeFilters],
+  );
+
+  const sortedBoards = useMemo(
+    () =>
+      sortBoardsForDisplay(filteredBoards, boardSortMode, boardCustomOrder),
+    [filteredBoards, boardSortMode, boardCustomOrder],
+  );
+
+  const sortedBoardIds = useMemo(
+    () => sortedBoards.map((b) => b.id),
+    [sortedBoards],
+  );
+
+  const boardById = useMemo(
+    () => new Map(sortedBoards.map((b) => [b.id, b])),
+    [sortedBoards],
+  );
 
   const hasActiveFilters = typeFilters.length > 0;
+
+  const handleSortModeChange = (mode: SortMode) => {
+    void onBoardSortModeChange(mode);
+  };
+
+  const handleReorder = async (nextIds: string[]) => {
+    const visibleSet = new Set(sortedBoardIds);
+    const reorderedVisible = nextIds.filter((id) => visibleSet.has(id));
+    const hidden = boardCustomOrder.filter((id) => !visibleSet.has(id));
+    await onBoardCustomOrderChange([...reorderedVisible, ...hidden]);
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="mb-2">Your Boards</h1>
-        <p className="text-muted-foreground">Mix and match your media</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
+        <SortOrderControl mode={boardSortMode} onModeChange={handleSortModeChange} />
         <SearchFilterBar
           placeholder="Search boards..."
           value={searchQuery}
@@ -81,7 +124,7 @@ export function LibraryPage({
         </button>
       </div>
 
-      {filteredBoards.length === 0 ? (
+      {sortedBoards.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
             {searchQuery || hasActiveFilters
@@ -90,20 +133,26 @@ export function LibraryPage({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-          {filteredBoards.map((board) => {
+        <ReorderableGrid
+          enabled={boardSortMode === 'custom'}
+          itemIds={sortedBoardIds}
+          onReorder={(ids) => void handleReorder(ids)}
+          className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3"
+        >
+          {(boardId) => {
+            const board = boardById.get(boardId);
+            if (!board) return null;
             const itemCount = getBoardMediaItems(board, mediaItems).length;
             return (
               <BoardCard
-                key={board.id}
                 board={board}
                 itemCount={itemCount}
                 accentColor={accentColor}
                 onClick={() => onBoardClick(board)}
               />
             );
-          })}
-        </div>
+          }}
+        </ReorderableGrid>
       )}
     </div>
   );

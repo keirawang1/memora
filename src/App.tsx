@@ -10,6 +10,7 @@ import { MediaDetailDialog } from './app/components/MediaDetailDialog';
 import { ProfilePage } from './app/components/ProfilePage';
 import { UserProfilePage } from './app/components/UserProfilePage';
 import { UserAvatar } from './app/components/UserAvatar';
+import { NotificationCenter } from './app/components/NotificationCenter';
 import { SettingsDialog } from './app/components/SettingsDialog';
 import { Button } from './app/components/ui/button';
 import { mockRecommendations } from './app/data/mockData';
@@ -22,13 +23,14 @@ import {
   isAllBoard,
   sortBoardsWithAllFirst,
 } from './app/data/allBoard';
+import { mergeCustomOrder } from './app/data/sortOrder';
 import type { MediaItem, Friend, Board, UserStats, User } from './app/types/media';
 import { Library, User as UserIcon, Users, Sparkles, Settings, LogOut } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './app/components/ui/dropdown-menu';
 import logoImage from './assets/logo.png';
 import { supabase } from './app/supabase/client';
-import { createBoard, fetchBoards, updateBoard, deleteBoard } from './app/supabase/boards';
+import { createBoard, fetchBoards, updateBoard, deleteBoard, updateBoardMediaOrder } from './app/supabase/boards';
 import {
   createMedia,
   deleteMedia,
@@ -54,7 +56,10 @@ import {
   updateUserProfile,
   updateUserShowAllBoard,
   updateUsername,
+  updateUserBoardSort,
+  updateUserMediaSort,
 } from './app/supabase/users';
+import type { SortMode } from './app/types/sort';
 import { AuthPage } from './app/components/AuthPage';
 
 function App() {
@@ -85,8 +90,12 @@ function App() {
   const [customGenres, setCustomGenres] = useState<string[]>([]);
   const [customMediaTypes, setCustomMediaTypes] = useState<string[]>([]);
   const [showAllBoard, setShowAllBoard] = useState(true);
+  const [boardSortMode, setBoardSortMode] = useState<SortMode>('alphabetical');
+  const [boardCustomOrder, setBoardCustomOrder] = useState<string[]>([]);
+  const [mediaSortMode, setMediaSortMode] = useState<SortMode>('alphabetical');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
+  const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
   const accentSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadUserTagPreferences = async (userId: string) => {
@@ -95,11 +104,23 @@ function App() {
       setCustomGenres(prefs.genres);
       setCustomMediaTypes(prefs.mediaTypes);
       setShowAllBoard(prefs.showAllBoard);
+      setBoardSortMode(prefs.librarySort.boardSortMode);
+      setBoardCustomOrder(prefs.librarySort.boardCustomOrder);
+      setMediaSortMode(prefs.librarySort.mediaSortMode);
     } catch {
       setCustomGenres([]);
       setCustomMediaTypes([]);
       setShowAllBoard(true);
+      setBoardSortMode('alphabetical');
+      setBoardCustomOrder([]);
+      setMediaSortMode('alphabetical');
     }
+  };
+
+  const persistBoardCustomOrder = async (order: string[]) => {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) return;
+    await updateUserBoardSort(authUser.id, boardSortMode, order);
   };
 
   const loadLibraryForUser = async () => {
@@ -175,6 +196,9 @@ function App() {
     setCustomGenres([]);
     setCustomMediaTypes([]);
     setShowAllBoard(true);
+    setBoardSortMode('alphabetical');
+    setBoardCustomOrder([]);
+    setMediaSortMode('alphabetical');
     setAccentColor(DEFAULT_ACCENT_COLOR);
     setUser(createDefaultUser());
     setShowProfile(false);
@@ -230,6 +254,9 @@ function App() {
           setCustomGenres([]);
           setCustomMediaTypes([]);
           setShowAllBoard(true);
+          setBoardSortMode('alphabetical');
+          setBoardCustomOrder([]);
+          setMediaSortMode('alphabetical');
           setUser(createDefaultUser());
         }
       },
@@ -282,6 +309,15 @@ function App() {
       setBoards((prev) =>
         sortBoardsWithAllFirst([...prev.filter((b) => b.id !== newBoard.id), newBoard]),
       );
+      const nextCustomOrder = mergeCustomOrder(boardCustomOrder, [newBoard.id]);
+      if (nextCustomOrder.length !== boardCustomOrder.length) {
+        setBoardCustomOrder(nextCustomOrder);
+        try {
+          await persistBoardCustomOrder(nextCustomOrder);
+        } catch {
+          // Board list still works if custom order save fails
+        }
+      }
       try {
         setBoards(await fetchBoards(mediaItems));
       } catch {
@@ -428,6 +464,7 @@ function App() {
     try {
       await sendFriendRequest(targetUser.id);
       setFriends(await fetchFriends(user.id));
+      setNotificationRefreshKey((k) => k + 1);
       toast.success(`Friend request sent to @${targetUser.username}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to send friend request';
@@ -439,6 +476,7 @@ function App() {
     try {
       await acceptFriendRequest(requesterId);
       setFriends(await fetchFriends(user.id));
+      setNotificationRefreshKey((k) => k + 1);
       toast.success('Friend request accepted!');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to accept friend request';
@@ -567,12 +605,64 @@ function App() {
       setUser({
         ...user,
         displayName: profile.displayName,
-        bio: profile.bio ?? '',
+        bio: profile.bio ?? data.bio.trim(),
         avatar: profile.avatar,
       });
       toast.success('Profile updated successfully!');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update profile';
+      toast.error(message);
+      throw error;
+    }
+  };
+
+  const handleBoardSortModeChange = async (mode: SortMode) => {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) return;
+    setBoardSortMode(mode);
+    try {
+      await updateUserBoardSort(authUser.id, mode);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save sort preference';
+      toast.error(message);
+    }
+  };
+
+  const handleBoardCustomOrderChange = async (order: string[]) => {
+    setBoardCustomOrder(order);
+    try {
+      await persistBoardCustomOrder(order);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save board order';
+      toast.error(message);
+    }
+  };
+
+  const handleMediaSortModeChange = async (mode: SortMode) => {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) return;
+    setMediaSortMode(mode);
+    try {
+      await updateUserMediaSort(authUser.id, mode);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save sort preference';
+      toast.error(message);
+    }
+  };
+
+  const handleBoardMediaOrderChange = async (boardId: string, mediaIds: string[]) => {
+    try {
+      const updated = await updateBoardMediaOrder(boardId, mediaIds);
+      setBoards((prev) =>
+        prev.map((b) => (b.id === boardId ? { ...b, mediaIds: updated.mediaIds } : b)),
+      );
+      if (selectedBoard?.id === boardId) {
+        setSelectedBoard((prev) =>
+          prev ? { ...prev, mediaIds: updated.mediaIds } : prev,
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save media order';
       toast.error(message);
       throw error;
     }
@@ -660,7 +750,17 @@ function App() {
             </button>
             
             <div className="flex items-center gap-3">
-              <div className="hidden sm:block text-right">
+              <NotificationCenter
+                accentColor={accentColor}
+                refreshKey={notificationRefreshKey}
+                onOpenFriends={() => {
+                  setViewingUserId(null);
+                  setShowProfile(false);
+                  setActiveTab('friends');
+                }}
+                onViewUserProfile={handleViewUserProfile}
+              />
+              <div className="hidden sm:block">
                 <div className="text-sm">{user.displayName}</div>
               </div>
               <DropdownMenu>
@@ -753,6 +853,9 @@ function App() {
                 onDeleteBoard={handleDeleteBoard}
                 customMediaTypes={customMediaTypes}
                 customGenres={customGenres}
+                mediaSortMode={mediaSortMode}
+                onMediaSortModeChange={handleMediaSortModeChange}
+                onBoardMediaOrderChange={handleBoardMediaOrderChange}
               />
             ) : (
               <LibraryPage
@@ -762,6 +865,10 @@ function App() {
                 onCreateBoard={handleCreateBoard}
                 accentColor={accentColor}
                 customMediaTypes={customMediaTypes}
+                boardSortMode={boardSortMode}
+                boardCustomOrder={boardCustomOrder}
+                onBoardSortModeChange={handleBoardSortModeChange}
+                onBoardCustomOrderChange={handleBoardCustomOrderChange}
               />
             )}
           </TabsContent>
@@ -779,6 +886,7 @@ function App() {
             <FriendsPage
               friends={friends}
               currentUser={user}
+              accentColor={accentColor}
               onAddFriend={handleAddFriend}
               onAcceptFriend={handleAcceptFriend}
               onRejectFriend={handleRejectFriend}

@@ -1,4 +1,5 @@
 import { DEFAULT_ACCENT_COLOR } from '../data/defaults';
+import type { LibrarySortPreferences, SortMode } from '../types/sort';
 import { normalizeAccentColor } from '../utils/accentColor';
 import { supabase } from './client';
 import { getAvatarDisplayUrl, resolveAvatarUrl } from './storage';
@@ -24,6 +25,21 @@ export interface UserTagPreferences {
   genres: string[];
   mediaTypes: string[];
   showAllBoard: boolean;
+  librarySort: LibrarySortPreferences;
+}
+
+const DEFAULT_SORT_MODE: SortMode = 'alphabetical';
+
+function parseSortMode(value: unknown): SortMode {
+  if (value === 'alphabetical' || value === 'last_edited' || value === 'custom') {
+    return value;
+  }
+  return DEFAULT_SORT_MODE;
+}
+
+function parseUuidOrder(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((id): id is string => typeof id === 'string' && id.length > 0);
 }
 
 interface DbUser {
@@ -105,7 +121,7 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
 }
 
 function isMissingBioColumnError(error: { code?: string; message?: string } | null): boolean {
-  if (!isMissingColumnError(error)) return false;
+  if (!error || !isMissingColumnError(error)) return false;
   const msg = (error.message ?? '').toLowerCase();
   return msg.includes('bio');
 }
@@ -353,37 +369,25 @@ export async function updateUserProfile(
   const displayName = data.displayName.trim();
   const bio = data.bio.trim() || null;
 
-  const textPayloads: Record<string, unknown>[] = [
-    { display_name: displayName, bio },
-    { display_name: displayName },
-  ];
+  const { error } = await supabase
+    .from('users')
+    .update({ display_name: displayName, bio })
+    .eq('user_id', authUserId);
 
-  let lastError: { code?: string; message?: string } | null = null;
-
-  for (const payload of textPayloads) {
-    const { error } = await supabase
-      .from('users')
-      .update(payload)
-      .eq('user_id', authUserId);
-
-    if (!error) {
-      const profile = await getUserProfile(authUserId);
-      if (!profile) {
-        throw new Error('Profile not found after update');
-      }
-      return profile;
-    }
-
+  if (error) {
     if (isMissingBioColumnError(error)) {
-      lastError = error;
-      continue;
+      throw new Error(
+        'Bio could not be saved. Run the latest Supabase migrations (user profile fields).',
+      );
     }
-
     throw error;
   }
 
-  const message = lastError?.message ?? 'Failed to update profile';
-  throw new Error(message);
+  const profile = await getUserProfile(authUserId);
+  if (!profile) {
+    throw new Error('Profile not found after update');
+  }
+  return profile;
 }
 
 export async function updateUsername(
@@ -419,30 +423,100 @@ export async function updateUsername(
 export async function getUserTagPreferences(
   authUserId: string,
 ): Promise<UserTagPreferences> {
-  let { data, error } = await supabase
+  const fullSelect =
+    'genres, media_types, show_all_board, board_sort_mode, board_custom_order, media_sort_mode';
+
+  const { data: fullData, error: fullError } = await supabase
     .from('users')
-    .select('genres, media_types, show_all_board')
+    .select(fullSelect)
     .eq('user_id', authUserId)
     .maybeSingle();
 
-  if (error) {
+  let row: {
+    genres?: string[] | null;
+    media_types?: string[] | null;
+    show_all_board?: boolean | null;
+    board_sort_mode?: string | null;
+    board_custom_order?: string[] | null;
+    media_sort_mode?: string | null;
+  } | null = fullData as typeof row;
+
+  if (fullError && isMissingColumnError(fullError)) {
     const fallback = await supabase
       .from('users')
-      .select('genres, media_types')
+      .select('genres, media_types, show_all_board')
       .eq('user_id', authUserId)
       .maybeSingle();
 
     if (fallback.error) throw fallback.error;
-    data = fallback.data as Pick<DbUser, 'genres' | 'media_types' | 'show_all_board'> | null;
-    error = null;
+    row = fallback.data as typeof row;
+  } else if (fullError) {
+    throw fullError;
   }
 
-  const row = data as Pick<DbUser, 'genres' | 'media_types' | 'show_all_board'> | null;
+  const typedRow = row as {
+    genres?: string[] | null;
+    media_types?: string[] | null;
+    show_all_board?: boolean | null;
+    board_sort_mode?: string | null;
+    board_custom_order?: string[] | null;
+    media_sort_mode?: string | null;
+  } | null;
+
   return {
-    genres: row?.genres ?? [],
-    mediaTypes: row?.media_types ?? [],
-    showAllBoard: row?.show_all_board ?? true,
+    genres: typedRow?.genres ?? [],
+    mediaTypes: typedRow?.media_types ?? [],
+    showAllBoard: typedRow?.show_all_board ?? true,
+    librarySort: {
+      boardSortMode: parseSortMode(typedRow?.board_sort_mode),
+      boardCustomOrder: parseUuidOrder(typedRow?.board_custom_order),
+      mediaSortMode: parseSortMode(typedRow?.media_sort_mode),
+    },
   };
+}
+
+export async function updateUserBoardSort(
+  authUserId: string,
+  boardSortMode: SortMode,
+  boardCustomOrder?: string[],
+): Promise<void> {
+  const payload: Record<string, unknown> = { board_sort_mode: boardSortMode };
+  if (boardCustomOrder !== undefined) {
+    payload.board_custom_order = boardCustomOrder;
+  }
+
+  const { error } = await supabase
+    .from('users')
+    .update(payload)
+    .eq('user_id', authUserId);
+
+  if (error) {
+    if (isMissingColumnError(error)) {
+      throw new Error(
+        'Sort preferences are not available yet. Run the latest Supabase migrations.',
+      );
+    }
+    throw error;
+  }
+}
+
+export async function updateUserMediaSort(
+  authUserId: string,
+  mediaSortMode: SortMode,
+): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ media_sort_mode: mediaSortMode })
+    .eq('user_id', authUserId);
+
+  if (error) {
+    if (isMissingColumnError(error)) {
+      throw new Error(
+        'Sort preferences are not available yet. Run the latest Supabase migrations.',
+      );
+    }
+    throw error;
+  }
 }
 
 export async function updateUserShowAllBoard(

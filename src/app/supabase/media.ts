@@ -46,6 +46,7 @@ interface DbMedia {
   cover: string | null;
   board_ids: string[] | null;
   created_at: string;
+  updated_at?: string | null;
   date_started: string | null;
   date_completed: string | null;
   notes: string | null;
@@ -72,6 +73,7 @@ function mapDbMediaToMedia(row: DbMedia): MediaItem {
     gallery: row.gallery ?? [],
     rating: row.rating ?? undefined,
     dateAdded: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at ?? undefined,
     dateStarted: row.date_started ?? undefined,
     dateCompleted: row.date_completed ?? undefined,
     notes: row.notes ?? undefined,

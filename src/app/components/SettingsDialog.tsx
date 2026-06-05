@@ -79,9 +79,6 @@ export function SettingsDialog({
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
-            <DialogDescription>
-              Customize your Memora experience
-            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
@@ -92,9 +89,6 @@ export function SettingsDialog({
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <Label htmlFor="accentColor" className="text-sm text-muted-foreground mb-2 block">
-                    Choose your accent color
-                  </Label>
                   <div className="flex items-center gap-3">
                     <input
                       id="accentColor"
@@ -125,7 +119,7 @@ export function SettingsDialog({
                 <div className="space-y-0.5 pr-4">
                   <Label htmlFor="show-all-board">Show All board</Label>
                   <p className="text-xs text-muted-foreground">
-                    Displays your full library as the first board. All media is added here automatically.
+                    All media is added here automatically.
                   </p>
                 </div>
                 <Switch
@@ -212,7 +206,7 @@ export function SettingsDialog({
         open={manageGenresOpen}
         onOpenChange={setManageGenresOpen}
         title="Manage custom genres"
-        description="Add, rename, or remove genres for your library. Built-in genres cannot be edited here."
+        description="Add, rename, or remove genres for your library. Default genres cannot be edited."
         tags={customGenres}
         onSave={onSaveCustomGenres}
         addPlaceholder="Genre name"
@@ -222,7 +216,7 @@ export function SettingsDialog({
         open={manageMediaTypesOpen}
         onOpenChange={setManageMediaTypesOpen}
         title="Manage custom media types"
-        description="Add, rename, or remove media types for your library. Built-in types cannot be edited here."
+        description="Add, rename, or remove media types for your library. Default types cannot be edited."
         tags={customMediaTypes}
         onSave={onSaveCustomMediaTypes}
         addPlaceholder="Media type name"

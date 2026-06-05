@@ -175,6 +175,8 @@ async function sendFriendRequestDirect(targetUserId: string): Promise<void> {
   if (updateError) {
     throw new Error(updateError.message || 'Failed to send friend request');
   }
+
+  await notifyFriendEvent(targetUserId, 'friend_request');
 }
 
 export async function sendFriendRequest(targetUserId: string): Promise<void> {
@@ -235,6 +237,25 @@ async function acceptFriendRequestDirect(requesterId: string): Promise<void> {
     .eq('user_id', callerId);
 
   if (selfError) throw new Error(selfError.message || 'Failed to accept friend request');
+
+  await notifyFriendEvent(requesterId, 'friend_accepted');
+}
+
+async function notifyFriendEvent(
+  recipientId: string,
+  type: 'friend_request' | 'friend_accepted',
+): Promise<void> {
+  const callerId = await getCallerId();
+  const { error } = await supabase.rpc('create_notification', {
+    p_user_id: recipientId,
+    p_actor_id: callerId,
+    p_type: type,
+    p_post_id: null,
+    p_comment_id: null,
+  });
+  if (error && !isMissingSchemaError(error)) {
+    console.warn('Failed to create notification', error);
+  }
 }
 
 export async function acceptFriendRequest(requesterId: string): Promise<void> {

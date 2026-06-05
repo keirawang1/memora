@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react';
 import type { Board, MediaItem, WatchStatus } from '../types/media';
+import type { SortMode } from '../types/sort';
 import { isAllBoard } from '../data/allBoard';
+import { sortMediaForDisplay } from '../data/sortOrder';
 import { MediaCard } from './MediaCard';
+import { SortOrderControl } from './SortOrderControl';
+import { ReorderableGrid } from './ReorderableGrid';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { SearchFilterBar } from './SearchFilterBar';
@@ -36,6 +40,9 @@ interface BoardDetailPageProps {
   customGenres: string[];
   onDeleteBoard?: (boardId: string) => void;
   readOnly?: boolean;
+  mediaSortMode: SortMode;
+  onMediaSortModeChange: (mode: SortMode) => void | Promise<void>;
+  onBoardMediaOrderChange: (boardId: string, mediaIds: string[]) => void | Promise<void>;
 }
 
 const watchStatuses: WatchStatus[] = ['completed', 'in-progress', 'not-started', 'dropped'];
@@ -50,6 +57,9 @@ export function BoardDetailPage({
   customMediaTypes,
   customGenres,
   readOnly = false,
+  mediaSortMode,
+  onMediaSortModeChange,
+  onBoardMediaOrderChange,
 }: BoardDetailPageProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -79,19 +89,52 @@ export function BoardDetailPage({
   const hasActiveFilters =
     genreFilters.length > 0 || typeFilters.length > 0 || statusFilters.length > 0;
 
-  const filteredMediaItems = mediaItems.filter((item) => {
-    const matchesSearch = item.title
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
-    const matchesGenre =
-      genreFilters.length === 0 ||
-      item.genre.some((g) => genreFilters.includes(g));
-    const matchesType =
-      typeFilters.length === 0 || typeFilters.includes(item.type);
-    const matchesStatus =
-      statusFilters.length === 0 || statusFilters.includes(item.status);
-    return matchesSearch && matchesGenre && matchesType && matchesStatus;
-  });
+  const filteredMediaItems = useMemo(
+    () =>
+      mediaItems.filter((item) => {
+        const matchesSearch = item.title
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase());
+        const matchesGenre =
+          genreFilters.length === 0 ||
+          item.genre.some((g) => genreFilters.includes(g));
+        const matchesType =
+          typeFilters.length === 0 || typeFilters.includes(item.type);
+        const matchesStatus =
+          statusFilters.length === 0 || statusFilters.includes(item.status);
+        return matchesSearch && matchesGenre && matchesType && matchesStatus;
+      }),
+    [mediaItems, searchQuery, genreFilters, typeFilters, statusFilters],
+  );
+
+  const customMediaOrder = board.mediaIds;
+
+  const sortedMediaItems = useMemo(
+    () =>
+      sortMediaForDisplay(filteredMediaItems, mediaSortMode, customMediaOrder),
+    [filteredMediaItems, mediaSortMode, customMediaOrder],
+  );
+
+  const sortedMediaIds = useMemo(
+    () => sortedMediaItems.map((m) => m.id),
+    [sortedMediaItems],
+  );
+
+  const mediaById = useMemo(
+    () => new Map(sortedMediaItems.map((m) => [m.id, m])),
+    [sortedMediaItems],
+  );
+
+  const handleMediaSortModeChange = (mode: SortMode) => {
+    void onMediaSortModeChange(mode);
+  };
+
+  const handleMediaReorder = async (nextVisibleIds: string[]) => {
+    const visibleSet = new Set(sortedMediaIds);
+    const reorderedVisible = nextVisibleIds.filter((id) => visibleSet.has(id));
+    const hidden = board.mediaIds.filter((id) => !visibleSet.has(id));
+    await onBoardMediaOrderChange(board.id, [...reorderedVisible, ...hidden]);
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -155,6 +198,10 @@ export function BoardDetailPage({
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <SortOrderControl
+            mode={mediaSortMode}
+            onModeChange={handleMediaSortModeChange}
+          />
           <SearchFilterBar
             placeholder="Search media..."
             value={searchQuery}
@@ -336,7 +383,7 @@ export function BoardDetailPage({
         </div>
       </div>
 
-      {filteredMediaItems.length === 0 ? (
+      {sortedMediaItems.length === 0 ? (
         <div className="text-center py-12 border-2 border-dashed rounded-lg">
           <p className="text-muted-foreground">
             {searchQuery || hasActiveFilters
@@ -345,15 +392,23 @@ export function BoardDetailPage({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-          {filteredMediaItems.map((item) => (
-            <MediaCard 
-              key={item.id} 
-              media={item}
-              onClick={() => onMediaClick(item)}
-            />
-          ))}
-        </div>
+        <ReorderableGrid
+          enabled={mediaSortMode === 'custom' && !readOnlyBoard}
+          itemIds={sortedMediaIds}
+          onReorder={(ids) => void handleMediaReorder(ids)}
+          className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3"
+        >
+          {(mediaId) => {
+            const item = mediaById.get(mediaId);
+            if (!item) return null;
+            return (
+              <MediaCard
+                media={item}
+                onClick={() => onMediaClick(item)}
+              />
+            );
+          }}
+        </ReorderableGrid>
       )}
     </div>
   );

@@ -114,6 +114,9 @@ export function UserProfilePage({ userId, onBack, accentColor = DEFAULT_ACCENT_C
           customMediaTypes={[...DEFAULT_MEDIA_TYPES]}
           customGenres={[...DEFAULT_GENRES]}
           readOnly
+          mediaSortMode="alphabetical"
+          onMediaSortModeChange={async () => {}}
+          onBoardMediaOrderChange={async () => {}}
         />
         <MediaDetailDialog
           media={selectedMedia}

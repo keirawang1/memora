@@ -12,6 +12,7 @@ export interface MediaItem {
   gallery?: string[];
   rating?: number;
   dateAdded: string;
+  updatedAt?: string;
   dateStarted?: string;
   dateCompleted?: string;
   notes?: string;
@@ -27,6 +28,7 @@ export interface Board {
   isSystem?: boolean;
   coverImage?: string;
   createdAt: string;
+  updatedAt?: string;
   description?: string;
 }
 

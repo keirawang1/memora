@@ -3,9 +3,10 @@ import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { getAvatarDisplayUrl } from '../supabase/storage';
 import { cn } from './ui/utils';
 
-type UserAvatarSize = 'sm' | 'lg' | 'xl';
+type UserAvatarSize = 'xs' | 'sm' | 'lg' | 'xl';
 
 const sizeConfig: Record<UserAvatarSize, { root: string; text: string }> = {
+  xs: { root: 'size-7 min-w-7 min-h-7', text: 'text-[10px] font-medium' },
   sm: { root: 'size-10', text: 'text-sm font-medium' },
   lg: { root: 'size-[150px]', text: 'text-4xl font-semibold' },
   xl: { root: 'size-44', text: 'text-3xl font-semibold' },

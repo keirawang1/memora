@@ -11,6 +11,8 @@ export interface FeedPost {
   createdAt: string;
   author: User;
   commentCount: number;
+  likeCount: number;
+  likedByMe: boolean;
 }
 
 export interface PostComment {
@@ -54,6 +56,13 @@ function publicUserToAuthor(u: {
   };
 }
 
+async function getCurrentUserId(): Promise<string> {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  if (!user) throw new Error('Not authenticated');
+  return user.id;
+}
+
 async function fetchAuthorsByIds(userIds: string[]): Promise<Map<string, User>> {
   const publicUsers = await getPublicUsersByIds(userIds);
   const map = new Map<string, User>();
@@ -63,7 +72,39 @@ async function fetchAuthorsByIds(userIds: string[]): Promise<Map<string, User>> 
   return map;
 }
 
+async function fetchLikeStats(
+  postIds: string[],
+  currentUserId: string,
+): Promise<{ counts: Map<string, number>; liked: Set<string> }> {
+  const counts = new Map<string, number>();
+  const liked = new Set<string>();
+  if (postIds.length === 0) return { counts, liked };
+
+  const { data, error } = await supabase
+    .from('post_likes')
+    .select('post_id, user_id')
+    .in('post_id', postIds);
+
+  if (error) {
+    if (error.code === 'PGRST205' || error.code === '42P01') {
+      return { counts, liked };
+    }
+    throw error;
+  }
+
+  for (const row of data ?? []) {
+    const postId = (row as { post_id: string }).post_id;
+    const userId = (row as { user_id: string }).user_id;
+    counts.set(postId, (counts.get(postId) ?? 0) + 1);
+    if (userId === currentUserId) liked.add(postId);
+  }
+
+  return { counts, liked };
+}
+
 export async function fetchFeedPosts(): Promise<FeedPost[]> {
+  const currentUserId = await getCurrentUserId();
+
   const { data: posts, error } = await supabase
     .from('posts')
     .select('post_id, user_id, text, image, created_at')
@@ -88,6 +129,7 @@ export async function fetchFeedPosts(): Promise<FeedPost[]> {
     countByPost.set(id, (countByPost.get(id) ?? 0) + 1);
   }
 
+  const { counts: likeCounts, liked } = await fetchLikeStats(postIds, currentUserId);
   const authors = await fetchAuthorsByIds(rows.map((r) => r.user_id));
 
   return rows.map((row) => {
@@ -103,6 +145,8 @@ export async function fetchFeedPosts(): Promise<FeedPost[]> {
       createdAt: row.created_at,
       author,
       commentCount: countByPost.get(row.post_id) ?? 0,
+      likeCount: likeCounts.get(row.post_id) ?? 0,
+      likedByMe: liked.has(row.post_id),
     };
   });
 }
@@ -148,6 +192,49 @@ export async function createPost(
     createdAt: row.created_at,
     author: publicUserToAuthor(profile),
     commentCount: 0,
+    likeCount: 0,
+    likedByMe: false,
+  };
+}
+
+export async function deletePost(postId: string): Promise<void> {
+  const { error } = await supabase.from('posts').delete().eq('post_id', postId);
+  if (error) throw error;
+}
+
+export async function togglePostLike(
+  postId: string,
+): Promise<{ liked: boolean; likeCount: number }> {
+  const userId = await getCurrentUserId();
+
+  const { data: existing, error: existingError } = await supabase
+    .from('post_likes')
+    .select('post_id')
+    .eq('post_id', postId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+
+  if (existing) {
+    const { error } = await supabase
+      .from('post_likes')
+      .delete()
+      .eq('post_id', postId)
+      .eq('user_id', userId);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from('post_likes').insert({
+      post_id: postId,
+      user_id: userId,
+    });
+    if (error) throw error;
+  }
+
+  const { counts, liked } = await fetchLikeStats([postId], userId);
+  return {
+    liked: liked.has(postId),
+    likeCount: counts.get(postId) ?? 0,
   };
 }
 
