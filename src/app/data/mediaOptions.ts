@@ -1,3 +1,6 @@
+import { isAllBoard } from './allBoard';
+import type { Board } from '../types/media';
+
 export const DEFAULT_MEDIA_TYPES = ['movie', 'tv', 'anime', 'comic', 'book'] as const;
 
 export const DEFAULT_GENRES = [
@@ -35,8 +38,10 @@ export function getBoardMediaTypeOptions(customMediaTypes: string[]): string[] {
   return options;
 }
 
-export function getMediaBoardIds(mediaId: string, boards: { id: string; mediaIds: string[] }[]): string[] {
-  return boards.filter((b) => b.mediaIds.includes(mediaId)).map((b) => b.id);
+export function getMediaBoardIds(mediaId: string, boards: Board[]): string[] {
+  return boards
+    .filter((b) => !isAllBoard(b) && b.mediaIds.includes(mediaId))
+    .map((b) => b.id);
 }
 
 export function formatWatchStatusLabel(status: string): string {

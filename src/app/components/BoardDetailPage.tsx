@@ -319,6 +319,7 @@ export function BoardDetailPage({
                   onChange={(e) => setBoardDescription(e.target.value)}
                   placeholder="Add a description for this board..."
                   rows={3}
+                  className="h-20"
                 />
               </div>
 

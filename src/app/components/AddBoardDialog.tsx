@@ -142,6 +142,7 @@ export function AddBoardDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
+              className="h-20"
             />
           </div>
 

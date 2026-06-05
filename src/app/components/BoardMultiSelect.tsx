@@ -43,9 +43,15 @@ export function BoardMultiSelect({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button variant="outline" role="combobox" className="w-full justify-between">
-            {selectedBoardIds.length > 0
-              ? `${selectedBoardIds.length} board${selectedBoardIds.length > 1 ? 's' : ''} selected`
-              : 'Select boards...'}
+            {(() => {
+              const count = selectedBoardIds.filter((id) => {
+                const board = boards.find((b) => b.id === id);
+                return board && !isAllBoard(board);
+              }).length;
+              return count > 0
+                ? `${count} board${count > 1 ? 's' : ''} selected`
+                : 'Select boards...';
+            })()}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
@@ -87,7 +93,12 @@ export function BoardMultiSelect({
       </Popover>
       {selectedBoardIds.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
-          {selectedBoardIds.map((boardId) => {
+          {selectedBoardIds
+            .filter((boardId) => {
+              const board = boards.find((b) => b.id === boardId);
+              return board && !isAllBoard(board);
+            })
+            .map((boardId) => {
             const board = boards.find((b) => b.id === boardId);
             return board ? (
               <Badge key={board.id} variant="secondary" className="gap-1">

@@ -16,6 +16,7 @@ export interface MediaItem {
   dateStarted?: string;
   dateCompleted?: string;
   notes?: string;
+  link?: string;
   boardIds?: string[];
 }
 

@@ -20,6 +20,7 @@ export interface CreateMediaInput {
   dateStarted?: string;
   dateCompleted?: string;
   notes?: string;
+  link?: string;
   boardIds?: string[];
 }
 
@@ -34,6 +35,7 @@ export interface UpdateMediaInput {
   dateStarted?: string;
   dateCompleted?: string;
   notes?: string;
+  link?: string;
   boardIds?: string[];
 }
 
@@ -50,6 +52,7 @@ interface DbMedia {
   date_started: string | null;
   date_completed: string | null;
   notes: string | null;
+  link: string | null;
   genres: string[] | null;
   gallery: string[] | null;
   user_id: string | null;
@@ -71,12 +74,13 @@ function mapDbMediaToMedia(row: DbMedia): MediaItem {
     status: normalizeWatchStatus(row.status),
     imageUrl: row.cover ?? '',
     gallery: row.gallery ?? [],
-    rating: row.rating ?? undefined,
+    rating: row.rating != null ? Number(row.rating) : undefined,
     dateAdded: row.created_at,
     updatedAt: row.updated_at ?? row.created_at ?? undefined,
     dateStarted: row.date_started ?? undefined,
     dateCompleted: row.date_completed ?? undefined,
     notes: row.notes ?? undefined,
+    link: row.link ?? undefined,
     boardIds: row.board_ids ?? [],
   };
 }
@@ -254,6 +258,7 @@ export async function createMedia(input: CreateMediaInput): Promise<MediaItem> {
     date_started: input.dateStarted || null,
     date_completed: input.dateCompleted || null,
     notes: input.notes || null,
+    link: input.link || null,
     cover: coverImageUrl ?? null,
     board_ids: boardIdsForMedia,
     user_id: user.id,
@@ -315,6 +320,7 @@ export async function updateMedia(
   if (input.dateStarted !== undefined) payload.date_started = input.dateStarted || null;
   if (input.dateCompleted !== undefined) payload.date_completed = input.dateCompleted || null;
   if (input.notes !== undefined) payload.notes = input.notes || null;
+  if (input.link !== undefined) payload.link = input.link || null;
 
   if (input.imageUrl !== undefined && input.imageUrl) {
     payload.cover = await resolveCoverImageUrl(user.id, input.imageUrl);

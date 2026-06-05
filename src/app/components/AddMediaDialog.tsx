@@ -6,7 +6,8 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
-import { Plus, X, Upload, Star } from 'lucide-react';
+import { Plus, X, Upload } from 'lucide-react';
+import { StarRating } from './StarRating';
 import type { MediaType, WatchStatus, Genre, Board } from '../types/media';
 import { BoardMultiSelect } from './BoardMultiSelect';
 import { GenreSelectDropdown } from './GenreSelectDropdown';
@@ -44,6 +45,7 @@ export function AddMediaDialog({
   const [imageUpload, setImageUpload] = useState('');
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState('');
+  const [link, setLink] = useState('');
   const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
   const [dateStarted, setDateStarted] = useState('');
   const [dateCompleted, setDateCompleted] = useState('');
@@ -90,6 +92,7 @@ export function AddMediaDialog({
           dateStarted: dateStarted || undefined,
           dateCompleted: dateCompleted || undefined,
           notes,
+          link: link.trim() || undefined,
         },
         selectedBoards,
       );
@@ -101,6 +104,7 @@ export function AddMediaDialog({
       setImageUpload('');
       setRating(0);
       setNotes('');
+      setLink('');
       setSelectedBoards([]);
       setDateStarted('');
       setDateCompleted('');
@@ -216,6 +220,18 @@ export function AddMediaDialog({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="link">Link</Label>
+            <Input
+              id="link"
+              type="url"
+              placeholder="https://..."
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              className="text-sm"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="date-started">Start Date</Label>
@@ -273,24 +289,7 @@ export function AddMediaDialog({
 
           <div className="space-y-2">
             <Label>Rating</Label>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={() => setRating(star === rating ? 0 : star)}
-                  className="focus:outline-none transition-transform hover:scale-110"
-                >
-                  <Star
-                    className={`w-8 h-8 ${
-                      star <= rating
-                        ? 'fill-yellow-400 text-yellow-400'
-                        : 'text-gray-300'
-                    }`}
-                  />
-                </button>
-              ))}
-            </div>
+            <StarRating value={rating} onChange={setRating} />
           </div>
 
           <div className="space-y-2">
@@ -301,6 +300,7 @@ export function AddMediaDialog({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
+              className="h-20"
             />
           </div>
         </div>

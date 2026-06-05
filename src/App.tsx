@@ -284,6 +284,7 @@ function App() {
         dateStarted: newMedia.dateStarted,
         dateCompleted: newMedia.dateCompleted,
         notes: newMedia.notes,
+        link: newMedia.link,
         boardIds: boardIds ?? [],
       };
       const created = await createMedia(input);
@@ -375,6 +376,7 @@ function App() {
         dateStarted: updates.dateStarted,
         dateCompleted: updates.dateCompleted,
         notes: updates.notes,
+        link: updates.link,
         boardIds,
       });
       const nextMedia = mediaItems.map((item) =>

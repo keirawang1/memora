@@ -6,7 +6,8 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
-import { Star, Calendar, Tag, Trash2, Save, Pencil, X, Upload } from 'lucide-react';
+import { Calendar, Tag, Trash2, Save, Pencil, X, Upload, ExternalLink } from 'lucide-react';
+import { StarRating, formatRating } from './StarRating';
 import type { MediaItem, MediaType, WatchStatus, Genre, Board } from '../types/media';
 import { BoardMultiSelect } from './BoardMultiSelect';
 import { GenreSelectDropdown } from './GenreSelectDropdown';
@@ -63,6 +64,7 @@ export function MediaDetailDialog({
   const [editDateStarted, setEditDateStarted] = useState('');
   const [editDateCompleted, setEditDateCompleted] = useState('');
   const [editSelectedBoards, setEditSelectedBoards] = useState<string[]>([]);
+  const [editLink, setEditLink] = useState('');
 
   useEffect(() => {
     if (media) {
@@ -77,6 +79,7 @@ export function MediaDetailDialog({
       setEditDateStarted(media.dateStarted || '');
       setEditDateCompleted(media.dateCompleted || '');
       setEditSelectedBoards(getMediaBoardIds(media.id, boards));
+      setEditLink(media.link || '');
     }
   }, [media, boards]);
 
@@ -163,6 +166,7 @@ export function MediaDetailDialog({
         imageUrl: editImageUpload || media.imageUrl,
         dateStarted: editDateStarted || undefined,
         dateCompleted: editDateCompleted || undefined,
+        link: editLink.trim() || undefined,
       },
       editSelectedBoards,
     );
@@ -181,6 +185,7 @@ export function MediaDetailDialog({
     setEditDateStarted(media.dateStarted || '');
     setEditDateCompleted(media.dateCompleted || '');
     setEditSelectedBoards(getMediaBoardIds(media.id, boards));
+    setEditLink(media.link || '');
     setIsEditingMedia(false);
   };
 
@@ -282,6 +287,18 @@ export function MediaDetailDialog({
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="edit-link">Link</Label>
+              <Input
+                id="edit-link"
+                type="url"
+                placeholder="https://..."
+                value={editLink}
+                onChange={(e) => setEditLink(e.target.value)}
+                className="text-sm"
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-date-started">Start Date</Label>
@@ -340,24 +357,7 @@ export function MediaDetailDialog({
 
             <div className="space-y-2">
               <Label>Rating</Label>
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    onClick={() => setEditRating(star === editRating ? 0 : star)}
-                    className="focus:outline-none transition-transform hover:scale-110"
-                  >
-                    <Star
-                      className={`w-8 h-8 ${
-                        star <= editRating
-                          ? 'fill-yellow-400 text-yellow-400'
-                          : 'text-gray-300'
-                      }`}
-                    />
-                  </button>
-                ))}
-              </div>
+              <StarRating value={editRating} onChange={setEditRating} />
             </div>
 
             <div className="flex gap-2 pt-4 border-t">
@@ -376,10 +376,10 @@ export function MediaDetailDialog({
               <Badge variant="outline" className="text-sm">
                 {media.type.toUpperCase()}
               </Badge>
-              {media.rating && (
-                <div className="flex items-center gap-1">
-                  <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                  <span>{media.rating}/5</span>
+              {media.rating != null && media.rating > 0 && (
+                <div className="flex items-center gap-2">
+                  <StarRating value={media.rating} onChange={() => {}} readOnly size="sm" />
+                  <span>{formatRating(media.rating)}/5</span>
                 </div>
               )}
             </div>
@@ -392,16 +392,32 @@ export function MediaDetailDialog({
                 </Badge>
               </div>
 
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Tag className="w-4 h-4" />
-                <span>Genres:</span>
-                <div className="flex flex-wrap gap-1">
-                  {media.genre.map((g) => (
-                    <Badge key={g} variant="secondary" className="text-xs">
-                      {g}
-                    </Badge>
-                  ))}
+              <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Tag className="w-4 h-4" />
+                  <span>Genres:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {media.genre.map((g) => (
+                      <Badge key={g} variant="secondary" className="text-xs">
+                        {g}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
+                {media.link && (
+                  <div className="flex items-center gap-1">
+                    <ExternalLink className="w-4 h-4" />
+                    <a
+                      href={media.link.match(/^https?:\/\//) ? media.link : `https://${media.link}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Link
+                    </a>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -447,6 +463,7 @@ export function MediaDetailDialog({
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Add your thoughts..."
                     rows={4}
+                    className="h-24"
                   />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={handleSaveNotes}>
@@ -466,7 +483,7 @@ export function MediaDetailDialog({
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-muted-foreground min-h-[60px]">
+                <div className="text-sm text-muted-foreground min-h-[60px] max-h-24 overflow-y-auto whitespace-pre-wrap break-words">
                   {media.notes || (readOnly ? 'No notes' : 'No notes yet. Click edit to add your thoughts!')}
                 </div>
               )}
