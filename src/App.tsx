@@ -13,7 +13,6 @@ import { UserAvatar } from './app/components/UserAvatar';
 import { NotificationCenter } from './app/components/NotificationCenter';
 import { SettingsDialog } from './app/components/SettingsDialog';
 import { Button } from './app/components/ui/button';
-import { mockRecommendations } from './app/data/mockData';
 import { DEFAULT_ACCENT_COLOR, getDefaultBoards, createDefaultUser } from './app/data/defaults';
 import { computeMediaTypeCounts } from './app/data/analytics';
 import { isValidAccentHex } from './app/utils/accentColor';
@@ -877,8 +876,8 @@ function App() {
 
           <TabsContent value="recommendations" className="mt-6">
             <RecommendationsPage
-              recommendations={mockRecommendations}
-              onMediaClick={handleMediaClick}
+              mediaItems={mediaItems}
+              userId={user.id}
               boards={boards}
               onAddMedia={handleAddMedia}
             />

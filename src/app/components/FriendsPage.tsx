@@ -703,7 +703,7 @@ function ManageFriends({
 
       <Card>
         <CardHeader>
-          <CardTitle>Find Friends</CardTitle>
+          <CardTitle>Find Users</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <Input
