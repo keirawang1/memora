@@ -44,10 +44,34 @@ export async function uploadBoardCoverImage(
   return uploadToBucket(BOARD_COVERS_BUCKET, path, blob, false);
 }
 
+async function deleteStorageObjectsBestEffort(
+  bucket: string,
+  paths: string[],
+): Promise<void> {
+  if (paths.length === 0) return;
+  try {
+    await supabase.storage.from(bucket).remove(paths);
+  } catch {
+    // Best-effort cleanup — don't block uploads/deletes
+  }
+}
+
+async function deleteUserAvatarsFromStorage(userId: string): Promise<void> {
+  const { data, error } = await supabase.storage.from(AVATARS_BUCKET).list(userId);
+  if (error || !data?.length) return;
+
+  const paths = data
+    .filter((file) => file.name.startsWith('avatar.'))
+    .map((file) => `${userId}/${file.name}`);
+
+  await deleteStorageObjectsBestEffort(AVATARS_BUCKET, paths);
+}
+
 export async function uploadUserAvatar(
   userId: string,
   dataUrl: string,
 ): Promise<string> {
+  await deleteUserAvatarsFromStorage(userId);
   const { blob, ext } = await dataUrlToBlob(dataUrl);
   const path = `${userId}/avatar.${ext}`;
   return uploadToBucket(AVATARS_BUCKET, path, blob, true);
@@ -164,22 +188,43 @@ export function getBoardCoverStoragePath(coverImageUrl: string): string | null {
   return null;
 }
 
+export function getPostImageStoragePath(imageUrl: string): string | null {
+  const trimmed = imageUrl.trim();
+  if (!trimmed) return null;
+
+  const markers = [
+    `/object/public/${POSTS_BUCKET}/`,
+    `/public/${POSTS_BUCKET}/`,
+  ];
+
+  for (const marker of markers) {
+    const index = trimmed.indexOf(marker);
+    if (index !== -1) {
+      return decodeURIComponent(trimmed.slice(index + marker.length).split('?')[0]);
+    }
+  }
+
+  if (!trimmed.startsWith('http') && trimmed.includes('/') && !trimmed.includes('/covers/')) {
+    return decodeURIComponent(trimmed.split('?')[0]);
+  }
+
+  return null;
+}
+
 export async function deleteBoardCoverFromStorage(
   coverImageUrl: string,
 ): Promise<void> {
   const path = getBoardCoverStoragePath(coverImageUrl);
-  if (!path) {
-    throw new Error('Invalid cover image URL — cannot delete from storage');
-  }
+  if (!path) return;
 
-  const { data, error } = await supabase.storage
-    .from(BOARD_COVERS_BUCKET)
-    .remove([path]);
+  await deleteStorageObjectsBestEffort(BOARD_COVERS_BUCKET, [path]);
+}
 
-  if (error) throw error;
+export async function deletePostImageFromStorage(
+  imageUrl: string,
+): Promise<void> {
+  const path = getPostImageStoragePath(imageUrl);
+  if (!path) return;
 
-  // RLS can block deletes without returning an error — verify something was removed
-  if (!data?.length) {
-    throw new Error(`Failed to delete cover image at path: ${path}`);
-  }
+  await deleteStorageObjectsBestEffort(POSTS_BUCKET, [path]);
 }

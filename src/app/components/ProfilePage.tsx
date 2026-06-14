@@ -26,12 +26,12 @@ interface ProfilePageProps {
   onUpdateProfile?: (data: { displayName: string; bio: string; avatar?: string }) => void | Promise<void>;
 }
 
-const typeIconMap: Record<string, { icon: typeof Film }> = {
-  movie: { icon: Film },
-  tv: { icon: Tv },
-  anime: { icon: Sparkles },
-  comic: { icon: BookOpen },
-  book: { icon: Book },
+const typeIconMap: Record<string, { icon: typeof Film; color: string }> = {
+  movie: { icon: Film, color: '#8b5cf6' },
+  tv: { icon: Tv, color: '#3b82f6' },
+  anime: { icon: Sparkles, color: '#ec4899' },
+  comic: { icon: BookOpen, color: '#f59e0b' },
+  book: { icon: Book, color: '#10b981' },
 };
 
 function mediaTypeStatLabel(type: string, count: number): string {
@@ -118,7 +118,6 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
       ...prev,
       displayName: data.displayName.trim(),
       bio: data.bio.trim(),
-      avatar: data.avatar ?? prev.avatar,
     }));
   };
 
@@ -132,11 +131,12 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
     return sortMediaTypes(entries.map(([type]) => type)).map((type) => {
       const count = typeCounts[type];
       const key = type.toLowerCase();
-      const typeConfig = typeIconMap[key] ?? { icon: Sparkles };
+      const typeConfig = typeIconMap[key] ?? { icon: Sparkles, color: '#ec4899' };
 
       return {
         type,
         icon: typeConfig.icon,
+        iconColor: typeConfig.color,
         label: mediaTypeStatLabel(type, count),
         value: count,
       };
@@ -199,21 +199,25 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
           <h2 className="mb-4">Analytics</h2>
 
           {statCards.length > 0 && (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 mb-6">
               {statCards.map((stat) => {
                 const Icon = stat.icon;
                 return (
-                  <div key={stat.type} className="flex flex-col items-center gap-2 min-w-0">
-                    <div
-                      className="aspect-square w-full max-w-[96px] rounded-xl flex flex-col items-center justify-center shadow-sm text-white"
-                      style={{ backgroundColor: chartColor }}
-                    >
-                      <Icon className="w-6 h-6 mb-1 shrink-0" />
-                      <span className="text-2xl font-semibold leading-none">{stat.value}</span>
+                  <div key={stat.type} className="flex flex-col items-center min-w-0">
+                    <div className="aspect-square w-full max-w-[120px] rounded-lg border bg-card flex flex-col justify-between p-2 min-w-0">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <Icon
+                          className="w-3 h-3 shrink-0"
+                          style={{ color: stat.iconColor }}
+                        />
+                        <span className="text-[12px] font-medium truncate leading-tight">
+                          {stat.label}
+                        </span>
+                      </div>
+                      <span className="text-xl font-bold tabular-nums leading-none">
+                        {stat.value}
+                      </span>
                     </div>
-                    <p className="text-xs text-center text-muted-foreground leading-tight px-1">
-                      {stat.label}
-                    </p>
                   </div>
                 );
               })}

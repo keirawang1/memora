@@ -21,12 +21,13 @@ interface UseDiscoveryFeedResult {
   personalized: boolean;
   recommendedLoading: boolean;
   trendingLoading: boolean;
-  error: string | null;
   refreshRecommended: () => void;
 }
 
 const TRENDING_CACHE_KEY = 'global-v4';
 const TRENDING_MANGA_CACHE_KEY = 'manga-v4';
+
+const emptySection = { primary: [] as DiscoveryItem[], manga: [] as DiscoveryItem[] };
 
 export function useDiscoveryFeed(
   mediaItems: MediaItem[],
@@ -40,7 +41,6 @@ export function useDiscoveryFeed(
   const [personalized, setPersonalized] = useState(false);
   const [recommendedLoading, setRecommendedLoading] = useState(true);
   const [trendingLoading, setTrendingLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const recommendedFetchedRef = useRef<string | null>(null);
   const trendingFetchedRef = useRef(false);
   const trendingExcludeRef = useRef<DiscoveryItem[]>([]);
@@ -90,9 +90,11 @@ export function useDiscoveryFeed(
         trendingFetchedRef.current = true;
         setTrendingLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load trending');
+        setTrending(emptySection.primary);
+        setTrendingManga(emptySection.manga);
+        trendingFetchedRef.current = true;
         setTrendingLoading(false);
       });
 
@@ -146,14 +148,12 @@ export function useDiscoveryFeed(
       setRecommendedManga(cachedManga);
       setPersonalized(cachedPersonalized ?? false);
       setRecommendedLoading(false);
-      setError(null);
       recommendedFetchedRef.current = fetchKey;
       return;
     }
 
     let cancelled = false;
     setRecommendedLoading(true);
-    setError(null);
 
     const lookupCache = new Map<string, number | null>();
     fetchRecommendedSection(mediaItems, lookupCache, trendingExcludeRef.current)
@@ -169,9 +169,12 @@ export function useDiscoveryFeed(
         recommendedFetchedRef.current = fetchKey;
         setRecommendedLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load recommendations');
+        setRecommended(emptySection.primary);
+        setRecommendedManga(emptySection.manga);
+        setPersonalized(false);
+        recommendedFetchedRef.current = fetchKey;
         setRecommendedLoading(false);
       });
 
@@ -196,15 +199,20 @@ export function useDiscoveryFeed(
     }
 
     let cancelled = false;
-    fetchTrendingSection(mediaItems, allRecommended).then((aligned) => {
-      if (cancelled) return;
-      setTrending(aligned.primary);
-      setTrendingManga(aligned.manga);
-      trendingExcludeRef.current = [...aligned.primary, ...aligned.manga];
-      writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, aligned.primary);
-      writeFeedCache(userId, 'trending', TRENDING_MANGA_CACHE_KEY, aligned.manga);
-      trendingAlignedRef.current = true;
-    });
+    fetchTrendingSection(mediaItems, allRecommended)
+      .then((aligned) => {
+        if (cancelled) return;
+        setTrending(aligned.primary);
+        setTrendingManga(aligned.manga);
+        trendingExcludeRef.current = [...aligned.primary, ...aligned.manga];
+        writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, aligned.primary);
+        writeFeedCache(userId, 'trending', TRENDING_MANGA_CACHE_KEY, aligned.manga);
+        trendingAlignedRef.current = true;
+      })
+      .catch(() => {
+        if (cancelled) return;
+        trendingAlignedRef.current = true;
+      });
 
     return () => {
       cancelled = true;
@@ -235,7 +243,6 @@ export function useDiscoveryFeed(
     personalized,
     recommendedLoading,
     trendingLoading,
-    error,
     refreshRecommended,
   };
 }

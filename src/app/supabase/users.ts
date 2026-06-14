@@ -1,5 +1,11 @@
 import { DEFAULT_ACCENT_COLOR } from '../data/defaults';
 import type { LibrarySortPreferences, SortMode } from '../types/sort';
+import {
+  createDefaultThemeSettings,
+  LIGHT_THEME_BACKGROUND,
+  parseThemeMode,
+  type AppThemeSettings,
+} from '../utils/appTheme';
 import { normalizeAccentColor } from '../utils/accentColor';
 import { supabase } from './client';
 import { getAvatarDisplayUrl, resolveAvatarUrl } from './storage';
@@ -134,9 +140,9 @@ function readAvatarFromRow(row: {
   avatar_url?: string | null;
   avatar?: string | null;
 }): string | null {
-  const fromAvatar = row.avatar?.trim();
   const fromUrl = row.avatar_url?.trim();
-  return fromAvatar || fromUrl || null;
+  const fromAvatar = row.avatar?.trim();
+  return fromUrl || fromAvatar || null;
 }
 
 function mapDbUser(row: ProfileRow): UserProfile {
@@ -222,27 +228,33 @@ export async function updateUserAvatar(
 
   const writeAttempts: Record<string, string | null>[] = [
     { avatar: dbValue, avatar_url: dbValue },
-    { avatar: dbValue },
+    { avatar_url: dbValue, avatar: null },
+    { avatar: dbValue, avatar_url: null },
     { avatar_url: dbValue },
+    { avatar: dbValue },
   ];
 
   let lastError: { message?: string } | null = null;
 
   for (const payload of writeAttempts) {
-    const filtered = Object.fromEntries(
-      Object.entries(payload).filter(([, v]) => v !== undefined),
-    );
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('users')
-      .update(filtered)
-      .eq('user_id', authUserId);
+      .update(payload)
+      .eq('user_id', authUserId)
+      .select('avatar, avatar_url')
+      .maybeSingle();
 
-    if (!error) {
+    if (!error && data) {
       return resolved;
     }
 
+    if (!error && !data) {
+      lastError = { message: 'Profile row not found' };
+      continue;
+    }
+
     if (!isMissingColumnError(error)) {
-      throw new Error(error.message || 'Failed to save avatar to profile');
+      throw new Error(error?.message || 'Failed to save avatar to profile');
     }
 
     lastError = error;
@@ -269,6 +281,110 @@ export async function getUserProfile(authUserId: string): Promise<UserProfile | 
 
 export async function getUserAccentColor(authUserId: string): Promise<string> {
   return fetchUserAccentColor(authUserId);
+}
+
+function mapThemeRow(row: {
+  theme_mode?: string | null;
+  background_color?: string | null;
+  accent_color?: string | null;
+}): AppThemeSettings {
+  return {
+    mode: parseThemeMode(row.theme_mode),
+    backgroundColor: row.background_color
+      ? normalizeAccentColor(row.background_color)
+      : LIGHT_THEME_BACKGROUND,
+    customAccentColor: normalizeAccentColor(row.accent_color),
+  };
+}
+
+export async function getUserThemePreferences(
+  authUserId: string,
+): Promise<AppThemeSettings> {
+  const selectAttempts = [
+    'theme_mode, background_color, accent_color',
+    'accent_color',
+  ] as const;
+
+  for (const select of selectAttempts) {
+    const { data, error } = await supabase
+      .from('users')
+      .select(select)
+      .eq('user_id', authUserId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return mapThemeRow(
+        data as {
+          theme_mode?: string | null;
+          background_color?: string | null;
+          accent_color?: string | null;
+        },
+      );
+    }
+    if (!error) {
+      return createDefaultThemeSettings();
+    }
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+  }
+
+  return createDefaultThemeSettings();
+}
+
+export async function updateUserTheme(
+  authUserId: string,
+  settings: AppThemeSettings,
+): Promise<AppThemeSettings> {
+  const normalized: AppThemeSettings = {
+    mode: settings.mode,
+    backgroundColor: normalizeAccentColor(settings.backgroundColor),
+    customAccentColor: normalizeAccentColor(settings.customAccentColor),
+  };
+
+  const payload: Record<string, string> = {
+    theme_mode: normalized.mode,
+    accent_color: normalized.customAccentColor,
+    background_color: normalized.backgroundColor,
+  };
+
+  const writeAttempts = [
+    'theme_mode, background_color, accent_color',
+    'theme_mode, accent_color',
+    'accent_color',
+  ] as const;
+
+  for (const select of writeAttempts) {
+    const keys = new Set(select.split(', '));
+    const attemptPayload = Object.fromEntries(
+      Object.entries(payload).filter(([key]) => keys.has(key)),
+    );
+
+    const { data, error } = await supabase
+      .from('users')
+      .update(attemptPayload)
+      .eq('user_id', authUserId)
+      .select(select)
+      .maybeSingle();
+
+    if (!error && data) {
+      return mapThemeRow(
+        data as {
+          theme_mode?: string | null;
+          background_color?: string | null;
+          accent_color?: string | null;
+        },
+      );
+    }
+    if (!error) {
+      return normalized;
+    }
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+  }
+
+  throw new Error('Failed to save theme preferences');
 }
 
 export async function getPublicUserProfile(userId: string): Promise<PublicUser | null> {
@@ -362,8 +478,9 @@ export async function updateUserProfile(
   authUserId: string,
   data: { displayName: string; bio: string; avatar?: string },
 ): Promise<UserProfile> {
+  let savedAvatar: string | null | undefined;
   if (data.avatar !== undefined) {
-    await updateUserAvatar(authUserId, data.avatar);
+    savedAvatar = await updateUserAvatar(authUserId, data.avatar);
   }
 
   const displayName = data.displayName.trim();
@@ -387,7 +504,42 @@ export async function updateUserProfile(
   if (!profile) {
     throw new Error('Profile not found after update');
   }
+
+  if (savedAvatar !== undefined) {
+    return {
+      ...profile,
+      avatar: savedAvatar ? savedAvatar : undefined,
+    };
+  }
+
   return profile;
+}
+
+export async function updateUserEmail(
+  authUserId: string,
+  email: string,
+): Promise<string> {
+  const trimmed = email.trim().toLowerCase();
+  if (!trimmed) {
+    throw new Error('Email is required');
+  }
+
+  const { error: authError } = await supabase.auth.updateUser({ email: trimmed });
+  if (authError) throw authError;
+
+  const { error: dbError } = await supabase
+    .from('users')
+    .update({ email: trimmed })
+    .eq('user_id', authUserId);
+
+  if (dbError) throw dbError;
+
+  return trimmed;
+}
+
+export async function deleteUserAccount(_authUserId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_own_account');
+  if (error) throw error;
 }
 
 export async function updateUsername(
@@ -590,6 +742,7 @@ export async function createUserProfile(
     display_name: displayName,
     show_all_board: true,
     accent_color: DEFAULT_ACCENT_COLOR,
+    theme_mode: 'light',
   };
 
   let lastError: { code?: string; message?: string } | null = null;

@@ -6,6 +6,7 @@ import { SearchFilterBar } from './SearchFilterBar';
 import { SortOrderControl } from './SortOrderControl';
 import { ReorderableGrid } from './ReorderableGrid';
 import { Plus } from 'lucide-react';
+import { getContrastTextColor } from '../utils/accentColor';
 import { getBoardMediaItems } from '../data/allBoard';
 import {
   boardMatchesTypeFilter,
@@ -116,8 +117,11 @@ export function LibraryPage({
         />
         <button
           onClick={onCreateBoard}
-          className="px-4 py-2 rounded-md text-white hover:opacity-90 transition-opacity flex items-center gap-2 shrink-0"
-          style={{ backgroundColor: accentColor }}
+          className="h-9 px-4 rounded-md text-sm hover:opacity-90 transition-opacity flex items-center gap-2 shrink-0"
+          style={{
+            backgroundColor: accentColor,
+            color: getContrastTextColor(accentColor),
+          }}
         >
           <Plus className="w-4 h-4" />
           New Board

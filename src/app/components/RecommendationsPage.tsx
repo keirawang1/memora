@@ -4,7 +4,6 @@ import type { DiscoveryItem } from '../types/discovery';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { RecommendationCard } from './RecommendationCard';
 import { TrendingUp, RefreshCw, WandSparklesIcon } from 'lucide-react';
-import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useDiscoveryFeed } from '../hooks/useDiscoveryFeed';
 import { normalizeTitle } from '../data/recommendationEngine';
@@ -25,7 +24,7 @@ function DiscoveryGridSkeleton() {
       {['Anime', 'Manga'].map((label) => (
         <div key={label}>
           <div className="h-3 w-16 bg-muted rounded mb-2 animate-pulse" />
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(12.5rem,1fr))] gap-3">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="animate-pulse flex flex-col">
                 <div className="aspect-square rounded-lg bg-muted mb-2" />
@@ -60,7 +59,7 @@ function DiscoveryScrollGrid({
         {label}
       </p>
       {items.length > 0 ? (
-        <div className="grid grid-cols-5 gap-3 items-stretch">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(12.5rem,1fr))] gap-3 items-stretch">
           {items.slice(0, 5).map((item) => (
             <RecommendationCard
               key={item.id}
@@ -109,7 +108,6 @@ export function RecommendationsPage({
     personalized,
     recommendedLoading,
     trendingLoading,
-    error,
     refreshRecommended,
   } = useDiscoveryFeed(mediaItems, userId);
   const [addedTitles, setAddedTitles] = useState<Set<string>>(() => {
@@ -137,8 +135,6 @@ export function RecommendationsPage({
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-semibold tracking-tight">For You</h1>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Card>
         <CardHeader className="pb-3">

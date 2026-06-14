@@ -1,7 +1,7 @@
 import type { User } from '../types/media';
 import { getPublicUserProfile, getPublicUsersByIds } from './users';
 import { supabase } from './client';
-import { uploadPostImage } from './storage';
+import { deletePostImageFromStorage, uploadPostImage } from './storage';
 
 export interface FeedPost {
   id: string;
@@ -198,8 +198,20 @@ export async function createPost(
 }
 
 export async function deletePost(postId: string): Promise<void> {
+  const { data: existing, error: fetchError } = await supabase
+    .from('posts')
+    .select('image')
+    .eq('post_id', postId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+
   const { error } = await supabase.from('posts').delete().eq('post_id', postId);
   if (error) throw error;
+
+  if (existing?.image) {
+    await deletePostImageFromStorage(existing.image);
+  }
 }
 
 export async function togglePostLike(

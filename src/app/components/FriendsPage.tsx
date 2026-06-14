@@ -43,6 +43,8 @@ import {
   MoreHorizontal,
   Trash2,
 } from 'lucide-react';
+import { fileToPostImageDataUrl } from '../utils/resizeImage';
+import { Dialog, DialogContent } from './ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -138,6 +140,27 @@ function FriendRow({
   );
 }
 
+function PostImagePreview({ src, alt = '' }: { src: string; alt?: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="block rounded-lg border overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <img src={src} alt={alt} className="w-40 h-40 object-cover" />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-3xl p-2 sm:p-4">
+          <img src={src} alt={alt} className="w-full max-h-[80vh] object-contain rounded-md" />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function PostComposer({
   currentUser,
   onPosted,
@@ -150,13 +173,15 @@ function PostComposer({
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
     e.target.value = '';
+    try {
+      setImagePreview(await fileToPostImageDataUrl(file));
+    } catch (err) {
+      console.error('Failed to process image', err);
+    }
   };
 
   const clearImage = () => setImagePreview(null);
@@ -198,7 +223,7 @@ function PostComposer({
             <img
               src={imagePreview}
               alt="Post attachment preview"
-              className="max-h-48 rounded-lg border object-cover"
+              className="w-32 h-32 rounded-lg border object-cover"
             />
             <Button
               type="button"
@@ -377,13 +402,7 @@ function PostCard({
           )}
         </div>
         <p className="text-base whitespace-pre-wrap">{post.body}</p>
-        {post.imageUrl && (
-          <img
-            src={post.imageUrl}
-            alt=""
-            className="w-full max-h-96 rounded-lg border object-cover"
-          />
-        )}
+        {post.imageUrl && <PostImagePreview src={post.imageUrl} />}
         <div className="flex items-center gap-1">
           <Button
             type="button"
@@ -589,9 +608,14 @@ function ManageFriends({
     (f) => f.status === 'pending' && f.direction === 'outgoing',
   );
 
-  const connectedUserIds = useMemo(
-    () => new Set(friends.map((f) => f.user.id)),
-    [friends],
+  const acceptedFriendIds = useMemo(
+    () => new Set(acceptedFriends.map((f) => f.user.id)),
+    [acceptedFriends],
+  );
+
+  const incomingRequestUserIds = useMemo(
+    () => new Set(incomingRequests.map((f) => f.user.id)),
+    [incomingRequests],
   );
 
   useEffect(() => {
@@ -618,8 +642,6 @@ function ManageFriends({
 
     return () => clearTimeout(timer);
   }, [searchQuery, currentUserId]);
-
-  const addableResults = searchResults.filter((u) => !connectedUserIds.has(u.id));
 
   const sentRequestUserIds = useMemo(
     () => new Set(sentRequests.map((f) => f.user.id)),
@@ -717,12 +739,12 @@ function ManageFriends({
               Searching...
             </div>
           )}
-          {!searching && searchQuery.trim() && addableResults.length === 0 && (
+          {!searching && searchQuery.trim() && searchResults.length === 0 && (
             <p className="text-sm text-muted-foreground">No users found.</p>
           )}
-          {addableResults.length > 0 && (
+          {searchResults.length > 0 && (
             <div className="space-y-2">
-              {addableResults.map((result) => (
+              {searchResults.map((result) => (
                 <div
                   key={result.id}
                   className="flex items-center justify-between p-3 rounded-lg border"
@@ -731,16 +753,29 @@ function ManageFriends({
                     user={publicUserToUser(result)}
                     onViewProfile={onViewProfile}
                   />
-                  <Button
-                    size="sm"
-                    className="shrink-0 ml-2"
-                    variant={sentRequestUserIds.has(result.id) ? 'secondary' : 'default'}
-                    disabled={sentRequestUserIds.has(result.id)}
-                    onClick={() => onAddFriend(publicUserToUser(result))}
-                  >
-                    <UserPlus className="w-4 h-4 mr-1" />
-                    {sentRequestUserIds.has(result.id) ? 'Pending' : 'Add'}
-                  </Button>
+                  {acceptedFriendIds.has(result.id) ? (
+                    <Badge variant="secondary" className="shrink-0 ml-2">
+                      Friends
+                    </Badge>
+                  ) : incomingRequestUserIds.has(result.id) ? (
+                    <Badge variant="secondary" className="shrink-0 ml-2">
+                      Request received
+                    </Badge>
+                  ) : sentRequestUserIds.has(result.id) ? (
+                    <Button size="sm" className="shrink-0 ml-2" variant="secondary" disabled>
+                      <UserPlus className="w-4 h-4 mr-1" />
+                      Pending
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="shrink-0 ml-2"
+                      onClick={() => onAddFriend(publicUserToUser(result))}
+                    >
+                      <UserPlus className="w-4 h-4 mr-1" />
+                      Add
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

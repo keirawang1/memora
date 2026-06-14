@@ -50,7 +50,7 @@ export function RecommendationCard({
 
   return (
     <>
-      <div className="flex flex-col h-full min-w-[140px]">
+      <div className="flex flex-col h-full min-w-0 w-full">
         <button
           type="button"
           onClick={() => setDetailOpen(true)}

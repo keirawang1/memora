@@ -35,12 +35,15 @@ export function EditProfileDialog({
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const wasOpenRef = useRef(false);
+
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       setEditDisplayName(displayName);
       setEditBio(bio);
       setEditAvatar(avatar);
     }
+    wasOpenRef.current = open;
   }, [open, displayName, bio, avatar]);
 
   const handleSubmit = async () => {

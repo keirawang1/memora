@@ -232,10 +232,13 @@ export async function fetchMangaRow(
   malGenreIds: number[] = [],
 ): Promise<DiscoveryItem[]> {
   const taken = new Set(exclude.map((i) => normalizeTitle(i.title)));
-  const pool =
+  let pool =
     malGenreIds.length > 0
       ? await jikanMangaByGenres(malGenreIds, 25)
       : await jikanTopManga(25);
+  if (pool.length === 0) {
+    pool = await jikanTopManga(25);
+  }
   return takeUniqueItems(pool, ROW_COUNT, taken, items).slice(0, ROW_COUNT);
 }
 
@@ -244,10 +247,8 @@ export async function fetchPrimaryTrendingRow(
   exclude: DiscoveryItem[] = [],
 ): Promise<DiscoveryItem[]> {
   const taken = new Set(exclude.map((i) => normalizeTitle(i.title)));
-  const [seasonPool, topPool] = await Promise.all([
-    jikanSeasonNow(20),
-    jikanTopAnime(20),
-  ]);
+  const seasonPool = await jikanSeasonNow(20);
+  const topPool = seasonPool.length < ROW_COUNT ? await jikanTopAnime(20) : [];
   const pool = dedupeDiscoveryItems([...seasonPool, ...topPool]);
   return takeUniqueItems(pool, ROW_COUNT, taken, items).slice(0, ROW_COUNT);
 }

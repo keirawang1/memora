@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './app/components/ui/tabs';
 import { LibraryPage } from './app/components/LibraryPage';
 import { BoardDetailPage } from './app/components/BoardDetailPage';
@@ -14,8 +14,6 @@ import { NotificationCenter } from './app/components/NotificationCenter';
 import { SettingsDialog } from './app/components/SettingsDialog';
 import { Button } from './app/components/ui/button';
 import { DEFAULT_ACCENT_COLOR, getDefaultBoards, createDefaultUser } from './app/data/defaults';
-import { computeMediaTypeCounts } from './app/data/analytics';
-import { isValidAccentHex } from './app/utils/accentColor';
 import {
   filterBoardsForDisplay,
   getBoardMediaItems,
@@ -23,7 +21,7 @@ import {
   sortBoardsWithAllFirst,
 } from './app/data/allBoard';
 import { mergeCustomOrder } from './app/data/sortOrder';
-import type { MediaItem, Friend, Board, UserStats, User } from './app/types/media';
+import type { MediaItem, Friend, Board, User } from './app/types/media';
 import { Library, User as UserIcon, Users, Sparkles, Settings, LogOut } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './app/components/ui/dropdown-menu';
@@ -46,10 +44,12 @@ import {
 } from './app/supabase/friends';
 import {
   ensureUserProfile,
-  getUserAccentColor,
   getUserProfile,
   getUserTagPreferences,
-  updateUserAccentColor,
+  deleteUserAccount,
+  getUserThemePreferences,
+  updateUserEmail,
+  updateUserTheme,
   updateUserGenres,
   updateUserMediaTypes,
   updateUserProfile,
@@ -60,6 +60,11 @@ import {
 } from './app/supabase/users';
 import type { SortMode } from './app/types/sort';
 import { AuthPage } from './app/components/AuthPage';
+import {
+  applyAppTheme,
+  createDefaultThemeSettings,
+  type AppThemeSettings,
+} from './app/utils/appTheme';
 
 function App() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -73,17 +78,11 @@ function App() {
   const [activeTab, setActiveTab] = useState('library');
   const [showProfile, setShowProfile] = useState(false);
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const [themeSettings, setThemeSettings] = useState<AppThemeSettings>(
+    createDefaultThemeSettings(),
+  );
   const [accentColor, setAccentColor] = useState(DEFAULT_ACCENT_COLOR);
   const [user, setUser] = useState(createDefaultUser());
-  const [userStats, setUserStats] = useState<UserStats>({
-    totalWatched: 0,
-    moviesWatched: 0,
-    tvShowsWatched: 0,
-    animeWatched: 0,
-    comicsRead: 0,
-    booksRead: 0,
-    hoursSpent: 0,
-  });
   
   // Custom genres and media types
   const [customGenres, setCustomGenres] = useState<string[]>([]);
@@ -95,7 +94,6 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
-  const accentSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadUserTagPreferences = async (userId: string) => {
     try {
@@ -127,9 +125,11 @@ function App() {
     if (!user) return;
 
     try {
-      setAccentColor(await getUserAccentColor(user.id));
+      const theme = await getUserThemePreferences(user.id);
+      setThemeSettings(theme);
+      setAccentColor(applyAppTheme(theme));
     } catch {
-      // Keep current accent if load fails
+      // Keep current theme if load fails
     }
 
     let fetchedMedia: MediaItem[] = [];
@@ -198,7 +198,9 @@ function App() {
     setBoardSortMode('alphabetical');
     setBoardCustomOrder([]);
     setMediaSortMode('alphabetical');
-    setAccentColor(DEFAULT_ACCENT_COLOR);
+    const defaultTheme = createDefaultThemeSettings();
+    setThemeSettings(defaultTheme);
+    setAccentColor(applyAppTheme(defaultTheme));
     setUser(createDefaultUser());
     setShowProfile(false);
     setViewingUserId(null);
@@ -256,6 +258,9 @@ function App() {
           setBoardSortMode('alphabetical');
           setBoardCustomOrder([]);
           setMediaSortMode('alphabetical');
+          const defaultTheme = createDefaultThemeSettings();
+          setThemeSettings(defaultTheme);
+          setAccentColor(applyAppTheme(defaultTheme));
           setUser(createDefaultUser());
         }
       },
@@ -521,18 +526,20 @@ function App() {
     }
   };
 
-  const handleShowAllBoardChange = async (show: boolean) => {
+  const handleSaveLibrarySettings = async (data: { showAllBoard: boolean }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('You must be signed in');
-      await updateUserShowAllBoard(user.id, show);
-      setShowAllBoard(show);
-      if (!show && selectedBoard && isAllBoard(selectedBoard)) {
+      await updateUserShowAllBoard(user.id, data.showAllBoard);
+      setShowAllBoard(data.showAllBoard);
+      if (!data.showAllBoard && selectedBoard && isAllBoard(selectedBoard)) {
         setSelectedBoard(null);
       }
+      toast.success('Library settings saved');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update setting';
       toast.error(message);
+      throw error;
     }
   };
 
@@ -550,27 +557,24 @@ function App() {
     }
   };
 
-  const handleAccentColorChange = (color: string) => {
-    setAccentColor(color);
-    if (!isValidAccentHex(color)) return;
+  const handleThemePreview = (settings: AppThemeSettings) => {
+    setThemeSettings(settings);
+    setAccentColor(applyAppTheme(settings));
+  };
 
-    if (accentSaveTimerRef.current) {
-      clearTimeout(accentSaveTimerRef.current);
+  const handleSaveTheme = async (settings: AppThemeSettings) => {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) throw new Error('You must be signed in');
+      const saved = await updateUserTheme(authUser.id, settings);
+      setThemeSettings(saved);
+      setAccentColor(applyAppTheme(saved));
+      toast.success('Theme saved');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save theme';
+      toast.error(message);
+      throw error;
     }
-
-    accentSaveTimerRef.current = setTimeout(() => {
-      void (async () => {
-        try {
-          const { data: { user: authUser } } = await supabase.auth.getUser();
-          if (!authUser) return;
-          const saved = await updateUserAccentColor(authUser.id, color);
-          setAccentColor(saved);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Failed to save accent color';
-          toast.error(message);
-        }
-      })();
-    }, 350);
   };
 
   const handleViewUserProfile = (userId: string) => {
@@ -669,18 +673,62 @@ function App() {
     }
   };
 
-  const handleSaveAccountSettings = async (data: { username: string }) => {
+  const handleSaveAccountSettings = async (data: {
+    username: string;
+    email: string;
+    bio: string;
+    avatar?: string;
+  }) => {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) throw new Error('You must be signed in');
-      const profile = await updateUsername(authUser.id, data.username);
+
+      let nextUsername = user.username;
+      let nextEmail = user.email ?? data.email;
+      let nextBio = data.bio.trim();
+      let nextAvatar = user.avatar;
+
+      if (data.username !== user.username) {
+        const profile = await updateUsername(authUser.id, data.username);
+        nextUsername = profile.username;
+      }
+
+      if (data.email.trim() !== (user.email ?? '').trim()) {
+        nextEmail = await updateUserEmail(authUser.id, data.email);
+      }
+
+      const profile = await updateUserProfile(authUser.id, {
+        displayName: user.displayName,
+        bio: data.bio,
+        avatar: data.avatar,
+      });
+      nextBio = profile.bio ?? nextBio;
+      nextAvatar = profile.avatar;
+
       setUser({
         ...user,
-        username: profile.username,
+        username: nextUsername,
+        email: nextEmail,
+        bio: nextBio,
+        avatar: nextAvatar,
       });
-      toast.success('Account settings saved!');
+      toast.success('Account saved');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to save username';
+      const message = error instanceof Error ? error.message : 'Failed to save account';
+      toast.error(message);
+      throw error;
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) throw new Error('You must be signed in');
+      await deleteUserAccount(authUser.id);
+      await handleSignOut();
+      toast.success('Account deleted');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete account';
       toast.error(message);
       throw error;
     }
@@ -693,22 +741,6 @@ function App() {
     [boards, showAllBoard],
   );
 
-  // Calculate stats dynamically from mediaItems
-  const calculatedStats: UserStats = useMemo(() => {
-    const typeCount = computeMediaTypeCounts(mediaItems);
-    const totalWatched = Object.values(typeCount).reduce((sum, count) => sum + count, 0);
-
-    return {
-      totalWatched,
-      moviesWatched: typeCount['movie'] || 0,
-      tvShowsWatched: typeCount['tv'] || 0,
-      animeWatched: typeCount['anime'] || 0,
-      comicsRead: typeCount['comic'] || 0,
-      booksRead: typeCount['book'] || 0,
-      hoursSpent: 0,
-      customTypeCounts: typeCount,
-    };
-  }, [mediaItems]);
 
   if (authChecking) {
     return (
@@ -931,15 +963,22 @@ function App() {
         open={settingsDialogOpen}
         onOpenChange={setSettingsDialogOpen}
         accentColor={accentColor}
-        onAccentColorChange={handleAccentColorChange}
+        themeSettings={themeSettings}
+        onThemePreview={handleThemePreview}
+        onSaveTheme={handleSaveTheme}
+        email={user.email}
         username={user.username}
+        bio={user.bio}
+        avatar={user.avatar}
+        displayName={user.displayName}
         onSaveAccountSettings={handleSaveAccountSettings}
+        onDeleteAccount={handleDeleteAccount}
         customGenres={customGenres}
         customMediaTypes={customMediaTypes}
         onSaveCustomGenres={handleSaveCustomGenres}
         onSaveCustomMediaTypes={handleSaveCustomMediaTypes}
         showAllBoard={showAllBoard}
-        onShowAllBoardChange={handleShowAllBoardChange}
+        onSaveLibrarySettings={handleSaveLibrarySettings}
       />
     </div>
   );

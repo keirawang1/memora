@@ -3,7 +3,7 @@ import { normalizeWatchStatus, parseGenresFromDb } from '../data/analytics';
 import { excludeAllBoardFromSelection } from '../data/allBoard';
 import { ensureAllBoard, syncAllBoardMedia } from './allBoardSync';
 import { supabase } from './client';
-import { resolveCoverImageUrl } from './storage';
+import { deleteBoardCoverFromStorage, resolveCoverImageUrl } from './storage';
 
 export type MediaType = string;
 export type WatchStatus = 'completed' | 'not-started' | 'in-progress' | 'dropped';
@@ -323,7 +323,22 @@ export async function updateMedia(
   if (input.link !== undefined) payload.link = input.link || null;
 
   if (input.imageUrl !== undefined && input.imageUrl) {
+    const { data: existing } = await supabase
+      .from('media')
+      .select('cover')
+      .eq('media_id', mediaId)
+      .eq('user_id', user.id)
+      .single();
+
     payload.cover = await resolveCoverImageUrl(user.id, input.imageUrl);
+
+    if (
+      existing?.cover &&
+      existing.cover !== payload.cover &&
+      input.imageUrl.startsWith('data:')
+    ) {
+      await deleteBoardCoverFromStorage(existing.cover);
+    }
   }
 
   if (input.boardIds !== undefined) {
@@ -373,11 +388,22 @@ export async function deleteMedia(mediaId: string): Promise<void> {
 
   await removeMediaIdFromAllBoards(user.id, mediaId);
 
+  const { data: existing } = await supabase
+    .from('media')
+    .select('cover')
+    .eq('media_id', mediaId)
+    .eq('user_id', user.id)
+    .single();
+
   const { error } = await supabase
     .from('media')
     .delete()
     .eq('media_id', mediaId)
     .eq('user_id', user.id);
+
+  if (!error && existing?.cover) {
+    await deleteBoardCoverFromStorage(existing.cover);
+  }
 
   if (error) throw error;
 

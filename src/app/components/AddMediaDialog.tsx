@@ -17,6 +17,7 @@ import {
   DEFAULT_MEDIA_TYPES,
   formatMediaTypeLabel,
 } from '../data/mediaOptions';
+import { getContrastTextColor } from '../utils/accentColor';
 
 interface AddMediaDialogProps {
   onAdd: (media: any, boardIds?: string[]) => void | Promise<void>;
@@ -131,9 +132,12 @@ export function AddMediaDialog({
       <DialogTrigger asChild>
         <button
           className="rounded-full fixed bottom-6 right-6 h-14 w-14 shadow-lg z-50 hover:opacity-90 transition-opacity flex items-center justify-center"
-          style={{ backgroundColor: accentColor }}
+          style={{
+            backgroundColor: accentColor,
+            color: getContrastTextColor(accentColor),
+          }}
         >
-          <Plus className="w-6 h-6 text-white" />
+          <Plus className="w-6 h-6" />
         </button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>

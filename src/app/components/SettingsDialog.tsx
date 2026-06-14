@@ -1,45 +1,235 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
+import { useState, useRef, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Label } from './ui/label';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Palette, User, Tags, Film, LayoutGrid } from 'lucide-react';
+import { Textarea } from './ui/textarea';
+import {
+  Palette,
+  User,
+  Tags,
+  Film,
+  LayoutGrid,
+  ChevronRight,
+  ArrowLeft,
+  Upload,
+  Trash2,
+} from 'lucide-react';
 import { Switch } from './ui/switch';
 import { ManageTagsDialog } from './ManageTagsDialog';
+import { UserAvatar } from './UserAvatar';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
+import { toast } from 'sonner';
+import { fileToAvatarDataUrl } from '../utils/resizeImage';
+import { cn } from './ui/utils';
+import { isValidAccentHex } from '../utils/accentColor';
+import {
+  DARK_THEME_ACCENT,
+  DARK_THEME_BACKGROUND,
+  LIGHT_THEME_BACKGROUND,
+  type AppThemeMode,
+  type AppThemeSettings,
+} from '../utils/appTheme';
+import { DEFAULT_ACCENT_COLOR } from '../data/defaults';
+
+type SettingsPage = 'menu' | 'theme' | 'library' | 'account';
 
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accentColor: string;
-  onAccentColorChange: (color: string) => void;
+  themeSettings: AppThemeSettings;
+  onThemePreview?: (settings: AppThemeSettings) => void;
+  onSaveTheme?: (settings: AppThemeSettings) => Promise<void>;
+  email?: string;
   username?: string;
-  onSaveAccountSettings?: (data: { username: string }) => void;
+  bio?: string;
+  avatar?: string;
+  displayName?: string;
+  onSaveAccountSettings?: (data: {
+    username: string;
+    email: string;
+    bio: string;
+    avatar?: string;
+  }) => Promise<void>;
+  onDeleteAccount?: () => Promise<void>;
   customGenres: string[];
   customMediaTypes: string[];
   onSaveCustomGenres: (genres: string[]) => Promise<void>;
   onSaveCustomMediaTypes: (mediaTypes: string[]) => Promise<void>;
   showAllBoard: boolean;
-  onShowAllBoardChange: (show: boolean) => void;
+  onSaveLibrarySettings?: (data: { showAllBoard: boolean }) => Promise<void>;
+}
+
+function SettingsMenuItem({
+  icon: Icon,
+  label,
+  description,
+  onClick,
+}: {
+  icon: typeof Palette;
+  label: string;
+  description?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-3 rounded-md border px-3 py-3 text-left hover:bg-muted/50 transition-colors"
+    >
+      <Icon className="w-4 h-4 shrink-0 text-muted-foreground" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium">{label}</p>
+        {description && (
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+        )}
+      </div>
+      <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground" />
+    </button>
+  );
+}
+
+const THEME_OPTIONS: {
+  mode: AppThemeMode;
+  label: string;
+  previewBg: string;
+  previewAccent: string;
+}[] = [
+  {
+    mode: 'light',
+    label: 'Light',
+    previewBg: LIGHT_THEME_BACKGROUND,
+    previewAccent: DEFAULT_ACCENT_COLOR,
+  },
+  {
+    mode: 'dark',
+    label: 'Dark',
+    previewBg: DARK_THEME_BACKGROUND,
+    previewAccent: DARK_THEME_ACCENT,
+  },
+  {
+    mode: 'custom',
+    label: 'Custom',
+    previewBg: LIGHT_THEME_BACKGROUND,
+    previewAccent: DEFAULT_ACCENT_COLOR,
+  },
+];
+
+function ThemeOption({
+  label,
+  previewBg,
+  previewAccent,
+  selected,
+  onClick,
+}: {
+  label: string;
+  previewBg: string;
+  previewAccent: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full flex items-center gap-3 rounded-md border px-3 py-3 text-left transition-colors',
+        selected ? 'border-primary ring-2 ring-ring' : 'hover:bg-muted/50',
+      )}
+    >
+      <div
+        className="size-10 shrink-0 rounded-md border flex items-center justify-center"
+        style={{ backgroundColor: previewBg }}
+      >
+        <div
+          className="size-4 rounded-full border border-black/10"
+          style={{ backgroundColor: previewAccent }}
+        />
+      </div>
+      <p className="text-sm font-medium">{label}</p>
+    </button>
+  );
 }
 
 export function SettingsDialog({
   open,
   onOpenChange,
   accentColor,
-  onAccentColorChange,
+  themeSettings,
+  onThemePreview,
+  onSaveTheme,
+  email = '',
   username = '',
+  bio = '',
+  avatar,
+  displayName = '',
   onSaveAccountSettings,
+  onDeleteAccount,
   customGenres,
   customMediaTypes,
   onSaveCustomGenres,
   onSaveCustomMediaTypes,
   showAllBoard,
-  onShowAllBoardChange,
+  onSaveLibrarySettings,
 }: SettingsDialogProps) {
+  const [page, setPage] = useState<SettingsPage>('menu');
+  const [draftTheme, setDraftTheme] = useState<AppThemeSettings>(themeSettings);
+  const [draftShowAllBoard, setDraftShowAllBoard] = useState(showAllBoard);
   const [editUsername, setEditUsername] = useState(username);
+  const [editEmail, setEditEmail] = useState(email);
+  const [editBio, setEditBio] = useState(bio);
+  const [editAvatar, setEditAvatar] = useState(avatar);
   const [usernameError, setUsernameError] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [manageGenresOpen, setManageGenresOpen] = useState(false);
   const [manageMediaTypesOpen, setManageMediaTypesOpen] = useState(false);
+  const [savingTheme, setSavingTheme] = useState(false);
+  const [savingLibrary, setSavingLibrary] = useState(false);
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setPage('menu');
+      onThemePreview?.(themeSettings);
+    }
+  }, [open, themeSettings, onThemePreview]);
+
+  useEffect(() => {
+    if (page === 'theme') {
+      setDraftTheme(themeSettings);
+    }
+  }, [page, themeSettings]);
+
+  useEffect(() => {
+    if (page === 'library') {
+      setDraftShowAllBoard(showAllBoard);
+    }
+  }, [page, showAllBoard]);
+
+  useEffect(() => {
+    if (page === 'account') {
+      setEditUsername(username);
+      setEditEmail(email);
+      setEditBio(bio);
+      setEditAvatar(avatar);
+      setUsernameError('');
+      setEmailError('');
+    }
+  }, [page, username, email, bio, avatar]);
 
   const validateUsername = (value: string) => {
     const cleanValue = value.replace('@', '');
@@ -59,62 +249,291 @@ export function SettingsDialog({
     return true;
   };
 
+  const validateEmail = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setEmailError('Email is required');
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError('Enter a valid email address');
+      return false;
+    }
+    setEmailError('');
+    return true;
+  };
+
   const handleUsernameChange = (value: string) => {
     const cleanValue = value.replace('@', '');
     setEditUsername(cleanValue);
     validateUsername(cleanValue);
   };
 
-  const handleSaveAccountSettings = () => {
-    if (validateUsername(editUsername) && onSaveAccountSettings) {
-      onSaveAccountSettings({
-        username: editUsername,
-      });
+  const handleEmailChange = (value: string) => {
+    setEditEmail(value);
+    validateEmail(value);
+  };
+
+  const previewTheme = (next: AppThemeSettings) => {
+    setDraftTheme(next);
+    onThemePreview?.(next);
+  };
+
+  const handleThemeModeSelect = (mode: AppThemeMode) => {
+    previewTheme({ ...draftTheme, mode });
+  };
+
+  const handleDraftBackgroundChange = (color: string) => {
+    previewTheme({ ...draftTheme, backgroundColor: color });
+  };
+
+  const handleDraftCustomAccentChange = (color: string) => {
+    previewTheme({ ...draftTheme, customAccentColor: color });
+  };
+
+  const handleBack = () => {
+    if (page === 'theme') {
+      onThemePreview?.(themeSettings);
+      setDraftTheme(themeSettings);
+    }
+    if (page === 'library') {
+      setDraftShowAllBoard(showAllBoard);
+    }
+    setPage('menu');
+  };
+
+  const handleSaveTheme = async () => {
+    if (!onSaveTheme) return;
+    if (
+      draftTheme.mode === 'custom' &&
+      (!isValidAccentHex(draftTheme.customAccentColor) ||
+        !isValidAccentHex(draftTheme.backgroundColor))
+    ) {
+      return;
+    }
+    setSavingTheme(true);
+    try {
+      await onSaveTheme(draftTheme);
+      setPage('menu');
+    } finally {
+      setSavingTheme(false);
     }
   };
+
+  const customThemeValid =
+    isValidAccentHex(draftTheme.customAccentColor) &&
+    isValidAccentHex(draftTheme.backgroundColor);
+
+  const handleSaveLibrary = async () => {
+    if (!onSaveLibrarySettings) return;
+    setSavingLibrary(true);
+    try {
+      await onSaveLibrarySettings({ showAllBoard: draftShowAllBoard });
+      setPage('menu');
+    } finally {
+      setSavingLibrary(false);
+    }
+  };
+
+  const handleSaveAccount = async () => {
+    const usernameValid = validateUsername(editUsername);
+    const emailValid = validateEmail(editEmail);
+    if (!usernameValid || !emailValid || !onSaveAccountSettings) return;
+
+    setSavingAccount(true);
+    try {
+      await onSaveAccountSettings({
+        username: editUsername,
+        email: editEmail.trim(),
+        bio: editBio,
+        avatar: editAvatar,
+      });
+      setPage('menu');
+    } finally {
+      setSavingAccount(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!onDeleteAccount) return;
+    setDeletingAccount(true);
+    try {
+      await onDeleteAccount();
+      setDeleteDialogOpen(false);
+      onOpenChange(false);
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const dataUrl = await fileToAvatarDataUrl(file);
+      setEditAvatar(dataUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to process image';
+      toast.error(message);
+    } finally {
+      setUploadingAvatar(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const pageTitle =
+    page === 'theme'
+      ? 'Theme'
+      : page === 'library'
+        ? 'Library'
+        : page === 'account'
+          ? 'Manage Account'
+          : 'Settings';
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Settings</DialogTitle>
+            {page === 'menu' ? (
+              <DialogTitle>{pageTitle}</DialogTitle>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={handleBack}
+                  aria-label="Back to settings"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <DialogTitle>{pageTitle}</DialogTitle>
+              </div>
+            )}
           </DialogHeader>
 
-          <div className="space-y-6 py-4">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Palette className="w-4 h-4" />
-                <Label>Accent Color</Label>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <input
-                      id="accentColor"
-                      type="color"
-                      value={accentColor}
-                      onChange={(e) => onAccentColorChange(e.target.value)}
-                      className="h-12 w-20 rounded border border-input cursor-pointer"
+          {page === 'menu' && (
+            <div className="space-y-2 py-2">
+              <SettingsMenuItem
+                icon={Palette}
+                label="Theme"
+                description="Light, dark, or custom"
+                onClick={() => setPage('theme')}
+              />
+              <SettingsMenuItem
+                icon={LayoutGrid}
+                label="Library"
+                description="Boards and custom tags"
+                onClick={() => setPage('library')}
+              />
+              <SettingsMenuItem
+                icon={User}
+                label="Manage Account"
+                description="Email, username, profile"
+                onClick={() => setPage('account')}
+              />
+            </div>
+          )}
+
+          {page === 'theme' && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Theme</Label>
+                <div className="space-y-2">
+                  {THEME_OPTIONS.map((option) => (
+                    <ThemeOption
+                      key={option.mode}
+                      label={option.label}
+                      previewBg={
+                        option.mode === 'custom'
+                          ? draftTheme.backgroundColor
+                          : option.previewBg
+                      }
+                      previewAccent={
+                        option.mode === 'custom'
+                          ? draftTheme.customAccentColor
+                          : option.previewAccent
+                      }
+                      selected={draftTheme.mode === option.mode}
+                      onClick={() => handleThemeModeSelect(option.mode)}
                     />
-                    <Input
-                      type="text"
-                      value={accentColor}
-                      onChange={(e) => onAccentColorChange(e.target.value)}
-                      placeholder="#5C2B17"
-                      className="flex-1"
-                      maxLength={7}
-                    />
-                  </div>
+                  ))}
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <LayoutGrid className="w-4 h-4" />
-                <Label>Library</Label>
-              </div>
+              {draftTheme.mode === 'custom' && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="backgroundColor">Background Color</Label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="backgroundColor"
+                        type="color"
+                        value={draftTheme.backgroundColor}
+                        onChange={(e) => handleDraftBackgroundChange(e.target.value)}
+                        className="h-10 w-16 rounded border border-input cursor-pointer"
+                      />
+                      <Input
+                        type="text"
+                        value={draftTheme.backgroundColor}
+                        onChange={(e) => handleDraftBackgroundChange(e.target.value)}
+                        placeholder="#ffffff"
+                        className="flex-1"
+                        maxLength={7}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="accentColor">Accent Color</Label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="accentColor"
+                        type="color"
+                        value={draftTheme.customAccentColor}
+                        onChange={(e) => handleDraftCustomAccentChange(e.target.value)}
+                        className="h-10 w-16 rounded border border-input cursor-pointer"
+                      />
+                      <Input
+                        type="text"
+                        value={draftTheme.customAccentColor}
+                        onChange={(e) => handleDraftCustomAccentChange(e.target.value)}
+                        placeholder="#5C2B17"
+                        className="flex-1"
+                        maxLength={7}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {onSaveTheme && (
+                <Button
+                  onClick={() => void handleSaveTheme()}
+                  className="w-full"
+                  disabled={
+                    savingTheme ||
+                    (draftTheme.mode === 'custom' && !customThemeValid)
+                  }
+                >
+                  {savingTheme ? 'Saving...' : 'Save Theme'}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {page === 'library' && (
+            <div className="space-y-4 py-2">
               <div className="flex items-center justify-between rounded-md border px-3 py-3">
                 <div className="space-y-0.5 pr-4">
                   <Label htmlFor="show-all-board">Show All board</Label>
@@ -124,81 +543,163 @@ export function SettingsDialog({
                 </div>
                 <Switch
                   id="show-all-board"
-                  checked={showAllBoard}
-                  onCheckedChange={onShowAllBoardChange}
+                  checked={draftShowAllBoard}
+                  onCheckedChange={setDraftShowAllBoard}
                 />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Tags className="w-4 h-4" />
-                <Label>Library tags</Label>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Custom options appear in Add and Edit Media dropdowns.
-              </p>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => setManageGenresOpen(true)}
-              >
-                <Tags className="w-4 h-4 mr-2" />
-                Manage custom genres
-                {customGenres.length > 0 && (
-                  <span className="ml-auto text-muted-foreground text-xs">
-                    {customGenres.length}
-                  </span>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => setManageMediaTypesOpen(true)}
-              >
-                <Film className="w-4 h-4 mr-2" />
-                Manage custom media types
-                {customMediaTypes.length > 0 && (
-                  <span className="ml-auto text-muted-foreground text-xs">
-                    {customMediaTypes.length}
-                  </span>
-                )}
-              </Button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4" />
-                <Label>Account</Label>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  value={editUsername}
-                  onChange={(e) => handleUsernameChange(e.target.value)}
-                  placeholder="username"
-                />
-                {usernameError && (
-                  <p className="text-xs text-red-500">{usernameError}</p>
-                )}
                 <p className="text-xs text-muted-foreground">
-                  Max 20 characters. Letters, numbers, and underscores only.
+                  Custom options appear in Add and Edit Media dropdowns.
                 </p>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => setManageGenresOpen(true)}
+                >
+                  <Tags className="w-4 h-4 mr-2" />
+                  Manage custom genres
+                  {customGenres.length > 0 && (
+                    <span className="ml-auto text-muted-foreground text-xs">
+                      {customGenres.length}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => setManageMediaTypesOpen(true)}
+                >
+                  <Film className="w-4 h-4 mr-2" />
+                  Manage custom media types
+                  {customMediaTypes.length > 0 && (
+                    <span className="ml-auto text-muted-foreground text-xs">
+                      {customMediaTypes.length}
+                    </span>
+                  )}
+                </Button>
+              </div>
+
+              {onSaveLibrarySettings && (
+                <Button
+                  onClick={() => void handleSaveLibrary()}
+                  className="w-full"
+                  disabled={savingLibrary}
+                >
+                  {savingLibrary ? 'Saving...' : 'Save Library Settings'}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {page === 'account' && (
+            <div className="flex flex-col gap-3">
+              <div className="max-h-[min(50vh,300px)] overflow-y-auto overscroll-contain pr-1">
+                <div className="space-y-3 py-1 pb-2">
+                  <div className="space-y-2">
+                    <Label>Avatar</Label>
+                    <div className="flex items-center gap-3">
+                      <UserAvatar
+                        displayName={displayName || editUsername}
+                        avatar={editAvatar}
+                        size="sm"
+                        accentColor={accentColor}
+                      />
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={savingAccount || uploadingAvatar}
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        {uploadingAvatar ? 'Processing...' : 'Change Avatar'}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="username">Username</Label>
+                    <div className="flex items-center rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring">
+                      <span className="pl-3 text-muted-foreground text-sm">@</span>
+                      <Input
+                        id="username"
+                        value={editUsername}
+                        onChange={(e) => handleUsernameChange(e.target.value)}
+                        placeholder="username"
+                        className="border-0 shadow-none focus-visible:ring-0"
+                      />
+                    </div>
+                    {usernameError && (
+                      <p className="text-xs text-red-500">{usernameError}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Max 20 characters. Letters, numbers, and underscores only.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => handleEmailChange(e.target.value)}
+                      placeholder="you@example.com"
+                    />
+                    {emailError && <p className="text-xs text-red-500">{emailError}</p>}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bio">Bio</Label>
+                    <Textarea
+                      id="bio"
+                      value={editBio}
+                      onChange={(e) => setEditBio(e.target.value)}
+                      placeholder="Tell us about yourself..."
+                      rows={3}
+                    />
+                  </div>
+
+                  {onDeleteAccount && (
+                    <div className="pt-6 mt-4 border-t">
+                      <Button
+                        variant="destructive"
+                        className="w-full"
+                        onClick={() => setDeleteDialogOpen(true)}
+                        disabled={savingAccount || deletingAccount}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Account
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {onSaveAccountSettings && (
                 <Button
-                  onClick={handleSaveAccountSettings}
-                  className="w-full"
-                  disabled={!!usernameError || !editUsername}
+                  onClick={() => void handleSaveAccount()}
+                  className="w-full shrink-0"
+                  disabled={
+                    savingAccount ||
+                    !!usernameError ||
+                    !!emailError ||
+                    !editUsername ||
+                    !editEmail
+                  }
                 >
-                  Save Account Settings
+                  {savingAccount ? 'Saving...' : 'Save Account'}
                 </Button>
               )}
             </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -221,6 +722,31 @@ export function SettingsDialog({
         onSave={onSaveCustomMediaTypes}
         addPlaceholder="Media type name"
       />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes your profile, library, boards, and posts. This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAccount}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDeleteAccount();
+              }}
+              disabled={deletingAccount}
+            >
+              {deletingAccount ? 'Deleting...' : 'Delete Account'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

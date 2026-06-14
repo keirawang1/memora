@@ -15,6 +15,15 @@ export function isValidAccentHex(value: string): boolean {
   return /^#[0-9A-Fa-f]{6}$/i.test(value.trim());
 }
 
+export function getContrastTextColor(hex: string): '#000000' | '#ffffff' {
+  const normalized = normalizeAccentColor(hex).slice(1);
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? '#000000' : '#ffffff';
+}
+
 export function hexWithAlpha(hex: string, alpha: number): string {
   const normalized = normalizeAccentColor(hex).slice(1);
   const r = Number.parseInt(normalized.slice(0, 2), 16);
