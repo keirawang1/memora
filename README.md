@@ -75,15 +75,20 @@ Open [http://localhost:5173](http://localhost:5173).
 | `pnpm preview` | Serve the production build locally |
 | `pnpm lint` | Run ESLint |
 
-## Deployment
+## Deploy to Vercel
 
-Memora is a static SPA. Build and deploy `dist/` to any static host (Vercel, Netlify, Cloudflare Pages, etc.).
+1. Import the repo in [Vercel](https://vercel.com/new) (Vite is auto-detected).
+2. Add environment variables under **Project Settings → Environment Variables**:
 
-1. Set the same `VITE_SUPABASE_*` environment variables in your hosting provider
-2. Build: `pnpm build`
-3. Deploy the `dist/` output
+   | Variable | Value |
+   |----------|-------|
+   | `VITE_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+   | `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase anon/publishable key |
 
-Ensure your Supabase project allows your production origin in **Authentication → URL Configuration**.
+3. Deploy. Vercel runs `npm run build` and serves `dist/` (configured in `vercel.json`).
+4. In Supabase **Authentication → URL Configuration**, add your Vercel URL to **Site URL** and **Redirect URLs**.
+
+`vercel.json` includes an SPA rewrite so all routes serve `index.html`.
 
 ## Project Structure
 

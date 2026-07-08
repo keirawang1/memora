@@ -334,13 +334,15 @@ async function finalizeRecommendedRow(
 
   if (row.length < ROW_COUNT) {
     const fallbackMalId = await defaultRecommendationMalId(mediaType);
-    const fallbackRecs = await fetchV4Recommendations(fallbackMalId, mediaType);
-    row = takeUniqueItems(
-      dedupeDiscoveryItems([...row, ...fallbackRecs]),
-      ROW_COUNT,
-      taken,
-      items,
-    );
+    if (fallbackMalId != null) {
+      const fallbackRecs = await fetchV4Recommendations(fallbackMalId, mediaType);
+      row = takeUniqueItems(
+        dedupeDiscoveryItems([...row, ...fallbackRecs]),
+        ROW_COUNT,
+        taken,
+        items,
+      );
+    }
   }
 
   return row.slice(0, ROW_COUNT);
