@@ -5,8 +5,9 @@ import { BoardCard } from './BoardCard';
 import { SearchFilterBar } from './SearchFilterBar';
 import { SortOrderControl } from './SortOrderControl';
 import { ReorderableGrid } from './ReorderableGrid';
+import { Button } from './ui/button';
 import { Plus } from 'lucide-react';
-import { getContrastTextColor } from '../utils/accentColor';
+import { accentButtonStyle } from '../utils/accentColor';
 import { getBoardMediaItems } from '../data/allBoard';
 import {
   boardMatchesTypeFilter,
@@ -115,17 +116,10 @@ export function LibraryPage({
             },
           ]}
         />
-        <button
-          onClick={onCreateBoard}
-          className="h-9 px-4 rounded-md text-sm hover:opacity-90 transition-opacity flex items-center gap-2 shrink-0"
-          style={{
-            backgroundColor: accentColor,
-            color: getContrastTextColor(accentColor),
-          }}
-        >
+        <Button variant="accent" onClick={onCreateBoard} className="shrink-0" style={accentButtonStyle}>
           <Plus className="w-4 h-4" />
           New Board
-        </button>
+        </Button>
       </div>
 
       {sortedBoards.length === 0 ? (

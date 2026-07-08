@@ -937,7 +937,6 @@ function App() {
         currentBoardId={selectedBoard?.id}
         customGenres={customGenres}
         customMediaTypes={customMediaTypes}
-        accentColor={accentColor}
       />
 
       <AddBoardDialog

@@ -9,6 +9,7 @@ import { Switch } from './ui/switch';
 import { MediaTypeSelectDropdown } from './MediaTypeSelectDropdown';
 import type { CreateBoardInput } from '../supabase/boards';
 import { BOARD_TYPE_MIXED, getBoardMediaTypeOptions } from '../data/mediaOptions';
+import { accentButtonStyle } from '../utils/accentColor';
 
 interface AddBoardDialogProps {
   open: boolean;
@@ -165,7 +166,7 @@ export function AddBoardDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!title || isSubmitting}>
+          <Button variant="accent" onClick={handleSubmit} style={accentButtonStyle} disabled={!title || isSubmitting}>
             {isSubmitting ? 'Creating...' : 'Create Board'}
           </Button>
         </div>

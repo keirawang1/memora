@@ -126,7 +126,7 @@ export function ManageTagsDialog({
                 ) : (
                   <>
                     <span className="flex-1 text-sm py-2 px-3 rounded-md bg-muted">{tag}</span>
-                    <Button size="icon" variant="ghost" onClick={() => startEdit(index)} disabled={saving}>
+                    <Button size="icon" variant="accentGhost" onClick={() => startEdit(index)} disabled={saving}>
                       <Pencil className="w-4 h-4" />
                     </Button>
                     <Button

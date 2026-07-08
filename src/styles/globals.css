@@ -2,6 +2,12 @@
 
 :root {
   --font-size: 14px;
+  --user-accent: #5c2b17;
+  --user-accent-foreground: #ffffff;
+  --dialog: #ffffff;
+  --dialog-foreground: #030213;
+  --dialog-muted-foreground: #717182;
+  --dialog-border: rgba(0, 0, 0, 0.1);
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;

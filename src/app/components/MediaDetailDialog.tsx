@@ -444,8 +444,8 @@ export function MediaDetailDialog({
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm">Notes</h3>
                 {!readOnly && !isEditingNotes && (
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="accentGhost"
                     size="sm"
                     onClick={() => {
                       setNotes(media.notes || '');
@@ -547,7 +547,7 @@ export function MediaDetailDialog({
             {!readOnly && (
             <div className="flex gap-2 pt-4 border-t">
               <Button
-                variant="outline"
+                variant="accent"
                 onClick={() => {
                   if (media) {
                     setEditSelectedBoards(getMediaBoardIds(media.id, boards));

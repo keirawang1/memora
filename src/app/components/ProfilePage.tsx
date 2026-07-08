@@ -175,7 +175,7 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
               <div className="flex items-center justify-center gap-2 mb-1">
                 <h1>{currentUser.displayName}</h1>
                 <Button
-                  variant="ghost"
+                  variant="accentGhost"
                   size="icon"
                   className="h-5 w-5"
                   onClick={() => setEditDialogOpen(true)}
@@ -199,25 +199,26 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
           <h2 className="mb-4">Analytics</h2>
 
           {statCards.length > 0 && (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 mb-6">
+            <div className="flex flex-wrap gap-3 mb-6">
               {statCards.map((stat) => {
                 const Icon = stat.icon;
                 return (
-                  <div key={stat.type} className="flex flex-col items-center min-w-0">
-                    <div className="aspect-square w-full max-w-[120px] rounded-lg border bg-card flex flex-col justify-between p-2 min-w-0">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <Icon
-                          className="w-3 h-3 shrink-0"
-                          style={{ color: stat.iconColor }}
-                        />
-                        <span className="text-[12px] font-medium truncate leading-tight">
-                          {stat.label}
-                        </span>
-                      </div>
-                      <span className="text-xl font-bold tabular-nums leading-none">
-                        {stat.value}
+                  <div
+                    key={stat.type}
+                    className="aspect-square w-[120px] rounded-lg border bg-card flex flex-col justify-between p-2 min-w-0"
+                  >
+                    <div className="flex items-center gap-1 min-w-0">
+                      <Icon
+                        className="w-3 h-3 shrink-0"
+                        style={{ color: stat.iconColor }}
+                      />
+                      <span className="text-[12px] font-medium truncate leading-tight">
+                        {stat.label}
                       </span>
                     </div>
+                    <span className="text-xl font-bold tabular-nums leading-none">
+                      {stat.value}
+                    </span>
                   </div>
                 );
               })}
@@ -270,7 +271,7 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" />
                       <YAxis allowDecimals={false} width={32} />
-                      <Tooltip />
+                      <Tooltip labelStyle={{ color: '#000' }} itemStyle={{ color: '#000' }} />
                       <Line
                         type="monotone"
                         dataKey="watched"

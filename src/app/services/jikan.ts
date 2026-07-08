@@ -20,7 +20,7 @@ async function jikanFetch<T>(path: string): Promise<T> {
       return res.json() as Promise<T>;
     }
 
-    if ((res.status === 429 || res.status === 503) && attempt < MAX_RETRIES) {
+    if ((res.status === 429 || res.status === 503 || res.status === 504) && attempt < MAX_RETRIES) {
       const retryAfter = Number(res.headers.get('Retry-After'));
       const delay = Number.isFinite(retryAfter) && retryAfter > 0
         ? retryAfter * 1000
@@ -141,6 +141,40 @@ export async function jikanTopAnime(limit = 12): Promise<DiscoveryItem[]> {
   return jikanFetchAnimeList(`/top/anime?filter=bypopularity&limit=${limit}`);
 }
 
+export async function jikanTopAiringAnime(limit = 20): Promise<DiscoveryItem[]> {
+  return jikanFetchAnimeList(`/top/anime?filter=airing&limit=${limit}`);
+}
+
+export async function jikanTopPublishingManga(limit = 20): Promise<DiscoveryItem[]> {
+  return jikanFetchMangaList(`/top/manga?filter=publishing&limit=${limit}`);
+}
+
+/** Recent/popular manga — recommendations first (reliable when list APIs fail). */
+export async function jikanRecentManga(limit = 25): Promise<DiscoveryItem[]> {
+  const recPool = await jikanMangaFromRecommendationSeeds(limit);
+  const listPool = await jikanTopPublishingManga(Math.min(limit, 15));
+  const merged = dedupeMangaItems([...listPool, ...recPool]);
+  if (merged.length >= 5) return merged.slice(0, limit);
+
+  const popular = await jikanTopManga(limit);
+  return dedupeMangaItems([...merged, ...popular]).slice(0, limit);
+}
+
+function dedupeMangaItems(items: DiscoveryItem[]): DiscoveryItem[] {
+  const seen = new Set<number>();
+  const result: DiscoveryItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.externalId)) continue;
+    seen.add(item.externalId);
+    result.push(item);
+  }
+  return result;
+}
+
+/** Stable fallback when list endpoints fail — recommendations still work for this id. */
+export const DEFAULT_MANGA_REC_SEED_ID = 13;
+export const DEFAULT_ANIME_REC_SEED_ID = 5114;
+
 export async function jikanRecommendations(malId: number): Promise<DiscoveryItem[]> {
   return jikanFetchAnimeRecs(`/anime/${malId}/recommendations`);
 }
@@ -186,6 +220,20 @@ export async function jikanMangaByGenres(
 
 export async function jikanMangaRecommendations(malId: number): Promise<DiscoveryItem[]> {
   return jikanFetchMangaRecs(`/manga/${malId}/recommendations`);
+}
+
+/** Popular manga ids — their /recommendations endpoints work when list APIs are down. */
+const MANGA_TRENDING_SEED_IDS = [44347, 13, 656, 2, 85199];
+
+export async function jikanMangaFromRecommendationSeeds(limit = 25): Promise<DiscoveryItem[]> {
+  const pool: DiscoveryItem[] = [];
+  for (const malId of MANGA_TRENDING_SEED_IDS) {
+    const recs = await jikanMangaRecommendations(malId);
+    if (recs.length === 0) continue;
+    pool.push(...recs);
+    if (dedupeMangaItems(pool).length >= limit) break;
+  }
+  return dedupeMangaItems(pool).slice(0, limit);
 }
 
 export async function jikanSearchManga(title: string): Promise<DiscoveryItem | null> {

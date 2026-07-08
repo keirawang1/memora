@@ -1,5 +1,5 @@
 import { DEFAULT_ACCENT_COLOR } from '../data/defaults';
-import { normalizeAccentColor } from './accentColor';
+import { getContrastTextColor, normalizeAccentColor } from './accentColor';
 
 export type AppThemeMode = 'light' | 'dark' | 'custom';
 
@@ -12,14 +12,16 @@ export interface AppThemeSettings {
 export const LIGHT_THEME_BACKGROUND = '#ffffff';
 export const DARK_THEME_BACKGROUND = '#000000';
 export const DARK_THEME_ACCENT = '#ffffff';
+export const DIALOG_LIGHT_BACKGROUND = '#ffffff';
+export const DIALOG_DARK_BACKGROUND = '#000000';
 
-const THEME_OVERRIDE_PROPS = [
-  '--background',
-  '--card',
-  '--popover',
-  '--foreground',
-  '--card-foreground',
-  '--popover-foreground',
+const THEME_OVERRIDE_PROPS = ['--background'] as const;
+
+const DIALOG_CSS_PROPS = [
+  '--dialog',
+  '--dialog-foreground',
+  '--dialog-muted-foreground',
+  '--dialog-border',
 ] as const;
 
 export function createDefaultThemeSettings(
@@ -75,12 +77,41 @@ function clearThemeOverrides(root: HTMLElement): void {
   }
 }
 
+function applyAccentVars(root: HTMLElement, accent: string): void {
+  root.style.setProperty('--user-accent', accent);
+  root.style.setProperty('--user-accent-foreground', getContrastTextColor(accent));
+}
+
+function applyDialogVars(root: HTMLElement, settings: AppThemeSettings): void {
+  if (settings.mode === 'dark') {
+    root.style.setProperty('--dialog', DIALOG_DARK_BACKGROUND);
+    root.style.setProperty('--dialog-foreground', '#fafafa');
+    root.style.setProperty('--dialog-muted-foreground', '#a1a1aa');
+    root.style.setProperty('--dialog-border', '#27272a');
+    return;
+  }
+
+  root.style.setProperty('--dialog', DIALOG_LIGHT_BACKGROUND);
+  root.style.setProperty('--dialog-foreground', '#030213');
+  root.style.setProperty('--dialog-muted-foreground', '#717182');
+  root.style.setProperty('--dialog-border', 'rgba(0, 0, 0, 0.1)');
+}
+
+function clearDialogVars(root: HTMLElement): void {
+  for (const prop of DIALOG_CSS_PROPS) {
+    root.style.removeProperty(prop);
+  }
+}
+
 export function applyAppTheme(settings: AppThemeSettings): string {
   const root = document.documentElement;
   const accent = resolveThemeAccent(settings);
   const background = resolveThemeBackground(settings);
 
   clearThemeOverrides(root);
+  clearDialogVars(root);
+  applyAccentVars(root, accent);
+  applyDialogVars(root, settings);
 
   if (settings.mode === 'light') {
     root.classList.remove('dark');
@@ -90,22 +121,12 @@ export function applyAppTheme(settings: AppThemeSettings): string {
   if (settings.mode === 'dark') {
     root.classList.add('dark');
     root.style.setProperty('--background', DARK_THEME_BACKGROUND);
-    root.style.setProperty('--card', '#0a0a0a');
-    root.style.setProperty('--popover', '#0a0a0a');
     return accent;
   }
 
   const useDarkUi = hexLuminance(background) < 0.5;
   root.classList.toggle('dark', useDarkUi);
   root.style.setProperty('--background', background);
-  root.style.setProperty('--card', background);
-  root.style.setProperty('--popover', background);
-
-  if (useDarkUi) {
-    root.style.setProperty('--foreground', '#fafafa');
-    root.style.setProperty('--card-foreground', '#fafafa');
-    root.style.setProperty('--popover-foreground', '#fafafa');
-  }
 
   return accent;
 }

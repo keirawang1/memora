@@ -24,8 +24,8 @@ interface UseDiscoveryFeedResult {
   refreshRecommended: () => void;
 }
 
-const TRENDING_CACHE_KEY = 'global-v4';
-const TRENDING_MANGA_CACHE_KEY = 'manga-v4';
+const TRENDING_CACHE_KEY = 'recent-airing-v4';
+const TRENDING_MANGA_CACHE_KEY = 'recent-recs-v4';
 
 const emptySection = { primary: [] as DiscoveryItem[], manga: [] as DiscoveryItem[] };
 
@@ -67,7 +67,7 @@ export function useDiscoveryFeed(
       TRENDING_MANGA_CACHE_KEY,
     );
 
-    if (cached && cachedManga) {
+    if (cached && cachedManga && cachedManga.length > 0) {
       setTrending(cached);
       setTrendingManga(cachedManga);
       trendingExcludeRef.current = [...cached, ...cachedManga];
@@ -86,7 +86,9 @@ export function useDiscoveryFeed(
         setTrendingManga(result.manga);
         trendingExcludeRef.current = [...result.primary, ...result.manga];
         writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, result.primary);
-        writeFeedCache(userId, 'trending', TRENDING_MANGA_CACHE_KEY, result.manga);
+        if (result.manga.length > 0) {
+          writeFeedCache(userId, 'trending', TRENDING_MANGA_CACHE_KEY, result.manga);
+        }
         trendingFetchedRef.current = true;
         setTrendingLoading(false);
       })
@@ -143,7 +145,7 @@ export function useDiscoveryFeed(
       ? readFeedCache<boolean>(userId, 'personalized', cacheKey)
       : null;
 
-    if (cachedRecommended && cachedManga) {
+    if (cachedRecommended && cachedManga && cachedManga.length > 0) {
       setRecommended(cachedRecommended);
       setRecommendedManga(cachedManga);
       setPersonalized(cachedPersonalized ?? false);
@@ -164,7 +166,9 @@ export function useDiscoveryFeed(
         setSeed(result.seed);
         setPersonalized(result.personalized);
         writeFeedCache(userId, 'recommended', cacheKey, result.primary);
-        writeFeedCache(userId, 'recommended-manga', cacheKey, result.manga);
+        if (result.manga.length > 0) {
+          writeFeedCache(userId, 'recommended-manga', cacheKey, result.manga);
+        }
         writeFeedCache(userId, 'personalized', cacheKey, result.personalized);
         recommendedFetchedRef.current = fetchKey;
         setRecommendedLoading(false);
@@ -206,7 +210,9 @@ export function useDiscoveryFeed(
         setTrendingManga(aligned.manga);
         trendingExcludeRef.current = [...aligned.primary, ...aligned.manga];
         writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, aligned.primary);
-        writeFeedCache(userId, 'trending', TRENDING_MANGA_CACHE_KEY, aligned.manga);
+        if (aligned.manga.length > 0) {
+          writeFeedCache(userId, 'trending', TRENDING_MANGA_CACHE_KEY, aligned.manga);
+        }
         trendingAlignedRef.current = true;
       })
       .catch(() => {

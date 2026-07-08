@@ -19,6 +19,10 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
+        accent:
+          "bg-[var(--user-accent)] text-[var(--user-accent-foreground)] hover:opacity-90 border border-transparent [&_svg]:text-[var(--user-accent-foreground)]",
+        accentGhost:
+          "text-[var(--user-accent)] hover:bg-[color-mix(in_oklab,var(--user-accent)_12%,transparent)] hover:text-[var(--user-accent)]",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
@@ -46,7 +50,7 @@ const Button = React.forwardRef<
   return (
     <Comp
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size }), className)}
       ref={ref}
       {...props}
     />

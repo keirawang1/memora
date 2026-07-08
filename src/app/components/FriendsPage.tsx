@@ -43,6 +43,7 @@ import {
   MoreHorizontal,
   Trash2,
 } from 'lucide-react';
+import { accentButtonStyle } from '../utils/accentColor';
 import { fileToPostImageDataUrl } from '../utils/resizeImage';
 import { Dialog, DialogContent } from './ui/dialog';
 import {
@@ -257,7 +258,9 @@ function PostComposer({
           </div>
           <Button
             type="button"
+            variant="accent"
             size="sm"
+            style={accentButtonStyle}
             disabled={!body.trim() || submitting}
             onClick={() => void handleSubmit()}
           >

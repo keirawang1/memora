@@ -1,73 +1,112 @@
-# React + TypeScript + Vite
+# Memora
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A personal media library and social tracker for anime, manga, movies, TV, books, and more. Organize your collection into boards, discover new titles via personalized recommendations, and share activity with friends.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Library** — Boards and media cards with ratings, genres, status, notes, and custom sort orders
+- **Recommendations** — Personalized anime/manga suggestions powered by your library and the [Jikan API](https://jikan.moe)
+- **Friends** — Friend requests, social feed with posts/comments/likes, and public profile viewing
+- **Notifications** — In-app alerts for likes, comments, and friend activity
+- **Themes** — Light, dark, or custom accent/background colors
+- **Auth** — Email/password sign-up and sign-in via Supabase
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 19, TypeScript, Vite |
+| Styling | Tailwind CSS, Radix UI / shadcn components |
+| Backend | Supabase (Postgres, Auth, Storage, RLS) |
+| Discovery | Jikan API v4 (MyAnimeList data) |
 
-## Expanding the ESLint configuration
+## Prerequisites
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- Node.js 20+
+- [pnpm](https://pnpm.io) (recommended) or npm
+- A [Supabase](https://supabase.com) project
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Local Setup
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### 1. Clone and install
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+git clone <repo-url>
+cd memora
+pnpm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Configure environment
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Copy the example env file and fill in your Supabase credentials:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cp .env.example .env
 ```
+
+```env
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<your-anon-or-publishable-key>
+```
+
+Find these in the Supabase dashboard under **Project Settings → API**.
+
+### 3. Apply database migrations
+
+Run all SQL files in `supabase/migrations/` against your Supabase project, in filename order. Options:
+
+- **Supabase CLI:** `supabase db push` (with the project linked)
+- **Dashboard:** paste each migration into the SQL editor
+
+### 4. Start the dev server
+
+```bash
+pnpm dev
+```
+
+Open [http://localhost:5173](http://localhost:5173).
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `pnpm dev` | Start Vite dev server with HMR |
+| `pnpm build` | Type-check and produce a production build in `dist/` |
+| `pnpm preview` | Serve the production build locally |
+| `pnpm lint` | Run ESLint |
+
+## Deployment
+
+Memora is a static SPA. Build and deploy `dist/` to any static host (Vercel, Netlify, Cloudflare Pages, etc.).
+
+1. Set the same `VITE_SUPABASE_*` environment variables in your hosting provider
+2. Build: `pnpm build`
+3. Deploy the `dist/` output
+
+Ensure your Supabase project allows your production origin in **Authentication → URL Configuration**.
+
+## Project Structure
+
+```
+src/
+├── App.tsx                 # Root component, auth gate, state orchestration
+├── app/
+│   ├── components/         # Pages, dialogs, and UI primitives
+│   ├── data/               # Business logic, recommendation engine, defaults
+│   ├── hooks/              # Custom React hooks (e.g. discovery feed)
+│   ├── services/           # External API clients (Jikan)
+│   ├── supabase/           # Database, auth, and storage access layer
+│   ├── types/              # Shared TypeScript types
+│   └── utils/              # Theme, accent color, image helpers
+├── styles/                 # Global CSS and design tokens
+└── assets/                 # Static images
+
+supabase/
+└── migrations/             # Postgres schema, RLS policies, triggers
+```
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for a detailed system design reference.
+
+## License
+
+UI components from [shadcn/ui](https://ui.shadcn.com) (MIT). See [ATTRIBUTIONS.md](./ATTRIBUTIONS.md).

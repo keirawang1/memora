@@ -17,7 +17,7 @@ import {
   DEFAULT_MEDIA_TYPES,
   formatMediaTypeLabel,
 } from '../data/mediaOptions';
-import { getContrastTextColor } from '../utils/accentColor';
+import { accentButtonStyle } from '../utils/accentColor';
 
 interface AddMediaDialogProps {
   onAdd: (media: any, boardIds?: string[]) => void | Promise<void>;
@@ -25,7 +25,6 @@ interface AddMediaDialogProps {
   currentBoardId?: string;
   customGenres: string[];
   customMediaTypes: string[];
-  accentColor?: string;
 }
 
 const watchStatuses: WatchStatus[] = ['completed', 'in-progress', 'not-started', 'dropped'];
@@ -36,7 +35,6 @@ export function AddMediaDialog({
   currentBoardId,
   customGenres,
   customMediaTypes,
-  accentColor = '#5C2B17',
 }: AddMediaDialogProps) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -131,11 +129,9 @@ export function AddMediaDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
+          type="button"
+          style={accentButtonStyle}
           className="rounded-full fixed bottom-6 right-6 h-14 w-14 shadow-lg z-50 hover:opacity-90 transition-opacity flex items-center justify-center"
-          style={{
-            backgroundColor: accentColor,
-            color: getContrastTextColor(accentColor),
-          }}
         >
           <Plus className="w-6 h-6" />
         </button>
@@ -313,7 +309,7 @@ export function AddMediaDialog({
           <Button variant="outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!title.trim() || isSubmitting}>
+          <Button variant="accent" onClick={handleSubmit} style={accentButtonStyle} disabled={!title.trim() || isSubmitting}>
             {isSubmitting ? 'Adding…' : 'Add Media'}
           </Button>
         </div>

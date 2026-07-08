@@ -237,7 +237,7 @@ export function BoardDetailPage({
           <>
           <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline">
+              <Button variant="accent">
                 <Pencil className="w-4 h-4 mr-2" />
                 Edit
               </Button>

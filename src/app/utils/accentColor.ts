@@ -1,5 +1,10 @@
 import { DEFAULT_ACCENT_COLOR } from '../data/defaults';
 
+export const accentButtonStyle = {
+  backgroundColor: 'var(--user-accent)',
+  color: 'var(--user-accent-foreground)',
+} as const;
+
 export function normalizeAccentColor(value: string | null | undefined): string {
   if (!value) return DEFAULT_ACCENT_COLOR;
   const trimmed = value.trim();
