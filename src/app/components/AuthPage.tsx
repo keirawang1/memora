@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -7,8 +7,12 @@ import { supabase } from '../supabase/client';
 import { ensureUserProfile } from '../supabase/users';
 import { toast } from 'sonner';
 import logoImage from '../../assets/logo.png';
+import { getPasswordResetRedirectUrl } from '../utils/authRecovery';
+
+type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset';
 
 interface AuthPageProps {
+  initialMode?: AuthMode;
   onAuthSuccess: (
     userId: string,
     username: string,
@@ -18,13 +22,23 @@ interface AuthPageProps {
     avatar?: string,
     bio?: string,
   ) => void;
+  onPasswordResetComplete?: () => void | Promise<void>;
 }
 
-export function AuthPage({ onAuthSuccess }: AuthPageProps) {
+export function AuthPage({
+  initialMode = 'signin',
+  onAuthSuccess,
+  onPasswordResetComplete,
+}: AuthPageProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
 
   const completeAuth = async (userId: string, userEmail: string, accessToken: string) => {
     const profile = await ensureUserProfile(userId, userEmail);
@@ -158,6 +172,64 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      toast.error('Please enter your email');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: getPasswordResetRedirectUrl(),
+      });
+      if (error) throw error;
+      toast.success('Check your email for a password reset link');
+      setMode('signin');
+      setPassword('');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to send reset email';
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!password) {
+      toast.error('Please enter a new password');
+      return;
+    }
+    if (password.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      await supabase.auth.signOut();
+      if (onPasswordResetComplete) {
+        await onPasswordResetComplete();
+      } else {
+        setMode('signin');
+      }
+      setPassword('');
+      setConfirmPassword('');
+      toast.success('Password updated. Sign in with your new password.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to update password';
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const createUserProfileAfterSignup = async (session: {
     user: { id: string; email?: string | null };
     access_token: string;
@@ -203,7 +275,20 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Password</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-primary underline"
+                    onClick={() => {
+                      setMode('forgot');
+                      setPassword('');
+                    }}
+                    disabled={isLoading}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <Input
                   id="password"
                   type="password"
@@ -235,6 +320,90 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
                   Create account
                 </button>
               </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {mode === 'forgot' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Reset Password</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Enter your email and we&apos;ll send you a link to reset your password.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="forgot-email">Email</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  placeholder="email@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleForgotPassword()}
+                  disabled={isLoading}
+                  autoFocus
+                />
+              </div>
+              <Button
+                onClick={handleForgotPassword}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Sending...' : 'Send Reset Link'}
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                <button
+                  type="button"
+                  className="text-primary underline"
+                  onClick={() => setMode('signin')}
+                  disabled={isLoading}
+                >
+                  Back to sign in
+                </button>
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {mode === 'reset' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Set New Password</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-password">New Password</Label>
+                <Input
+                  id="reset-password"
+                  type="password"
+                  placeholder="Enter new password (min 6 characters)"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reset-confirm-password">Confirm Password</Label>
+                <Input
+                  id="reset-confirm-password"
+                  type="password"
+                  placeholder="Confirm new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleResetPassword()}
+                  disabled={isLoading}
+                />
+              </div>
+              <Button
+                onClick={handleResetPassword}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Updating...' : 'Update Password'}
+              </Button>
             </CardContent>
           </Card>
         )}

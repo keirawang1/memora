@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Label } from './ui/label';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
 import {
   Palette,
   User,
@@ -52,15 +51,14 @@ interface SettingsDialogProps {
   onSaveTheme?: (settings: AppThemeSettings) => Promise<void>;
   email?: string;
   username?: string;
-  bio?: string;
   avatar?: string;
   displayName?: string;
   onSaveAccountSettings?: (data: {
     username: string;
     email: string;
-    bio: string;
     avatar?: string;
   }) => Promise<void>;
+  onChangePassword?: (password: string) => Promise<void>;
   onDeleteAccount?: () => Promise<void>;
   customGenres: string[];
   customMediaTypes: string[];
@@ -170,10 +168,10 @@ export function SettingsDialog({
   onSaveTheme,
   email = '',
   username = '',
-  bio = '',
   avatar,
   displayName = '',
   onSaveAccountSettings,
+  onChangePassword,
   onDeleteAccount,
   customGenres,
   customMediaTypes,
@@ -187,8 +185,10 @@ export function SettingsDialog({
   const [draftShowAllBoard, setDraftShowAllBoard] = useState(showAllBoard);
   const [editUsername, setEditUsername] = useState(username);
   const [editEmail, setEditEmail] = useState(email);
-  const [editBio, setEditBio] = useState(bio);
   const [editAvatar, setEditAvatar] = useState(avatar);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [manageGenresOpen, setManageGenresOpen] = useState(false);
@@ -196,6 +196,7 @@ export function SettingsDialog({
   const [savingTheme, setSavingTheme] = useState(false);
   const [savingLibrary, setSavingLibrary] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -224,12 +225,14 @@ export function SettingsDialog({
     if (page === 'account') {
       setEditUsername(username);
       setEditEmail(email);
-      setEditBio(bio);
       setEditAvatar(avatar);
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError('');
       setUsernameError('');
       setEmailError('');
     }
-  }, [page, username, email, bio, avatar]);
+  }, [page, username, email, avatar]);
 
   const validateUsername = (value: string) => {
     const cleanValue = value.replace('@', '');
@@ -345,12 +348,46 @@ export function SettingsDialog({
       await onSaveAccountSettings({
         username: editUsername,
         email: editEmail.trim(),
-        bio: editBio,
         avatar: editAvatar,
       });
       setPage('menu');
     } finally {
       setSavingAccount(false);
+    }
+  };
+
+  const validatePasswordChange = () => {
+    if (!newPassword && !confirmPassword) {
+      setPasswordError('');
+      return false;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return false;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return false;
+    }
+    setPasswordError('');
+    return true;
+  };
+
+  const handleChangePassword = async () => {
+    if (!validatePasswordChange() || !onChangePassword) return;
+
+    setChangingPassword(true);
+    try {
+      await onChangePassword(newPassword);
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError('');
+      toast.success('Password updated');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update password';
+      toast.error(message);
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -657,15 +694,53 @@ export function SettingsDialog({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="bio">Bio</Label>
-                    <Textarea
-                      id="bio"
-                      value={editBio}
-                      onChange={(e) => setEditBio(e.target.value)}
-                      placeholder="Tell us about yourself..."
-                      rows={3}
+                    <Label htmlFor="new-password">New Password</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value);
+                        if (passwordError) validatePasswordChange();
+                      }}
+                      placeholder="Enter new password"
+                      autoComplete="new-password"
                     />
                   </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirm-password">Confirm Password</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        if (passwordError) validatePasswordChange();
+                      }}
+                      placeholder="Confirm new password"
+                      autoComplete="new-password"
+                    />
+                    {passwordError && (
+                      <p className="text-xs text-red-500">{passwordError}</p>
+                    )}
+                  </div>
+
+                  {onChangePassword && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => void handleChangePassword()}
+                      disabled={
+                        changingPassword ||
+                        !newPassword ||
+                        !confirmPassword ||
+                        savingAccount
+                      }
+                    >
+                      {changingPassword ? 'Updating...' : 'Change Password'}
+                    </Button>
+                  )}
 
                   {onDeleteAccount && (
                     <div className="pt-6 mt-4 border-t">

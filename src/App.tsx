@@ -73,9 +73,14 @@ import {
   getUserIdFromPath,
   isKnownAppPath,
   isProfilePath,
+  isResetPasswordPath,
   tabToRoute,
   type AppTab,
 } from './app/utils/appRoutes';
+import {
+  clearAuthParamsFromUrl,
+  isPasswordRecoveryUrl,
+} from './app/utils/authRecovery';
 
 function App() {
   const location = useLocation();
@@ -101,6 +106,7 @@ function App() {
   const [boardCustomOrder, setBoardCustomOrder] = useState<string[]>([]);
   const [mediaSortMode, setMediaSortMode] = useState<SortMode>('alphabetical');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
@@ -115,7 +121,37 @@ function App() {
     return boards.find((board) => board.id === boardIdFromUrl) ?? null;
   }, [boardIdFromUrl, boards]);
 
+  const resetAuthState = () => {
+    setIsAuthenticated(false);
+    setLibraryLoaded(false);
+    setBoards(getDefaultBoards());
+    setMediaItems([]);
+    setFriends([]);
+    setCustomGenres([]);
+    setCustomMediaTypes([]);
+    setShowAllBoard(true);
+    setBoardSortMode('alphabetical');
+    setBoardCustomOrder([]);
+    setMediaSortMode('alphabetical');
+    const defaultTheme = createDefaultThemeSettings();
+    setThemeSettings(defaultTheme);
+    setAccentColor(applyAppTheme(defaultTheme));
+    setUser(createDefaultUser());
+  };
+
+  const beginPasswordRecovery = (clearUrl = false) => {
+    resetAuthState();
+    setPasswordRecoveryPending(true);
+    if (clearUrl) {
+      clearAuthParamsFromUrl();
+    }
+    if (!isResetPasswordPath(location.pathname)) {
+      navigate(APP_ROUTES.resetPassword, { replace: true });
+    }
+  };
+
   useEffect(() => {
+    if (passwordRecoveryPending) return;
     if (!isAuthenticated) return;
     if (location.pathname === '/') {
       navigate(APP_ROUTES.library, { replace: true });
@@ -124,7 +160,7 @@ function App() {
     if (!isKnownAppPath(location.pathname)) {
       navigate(APP_ROUTES.library, { replace: true });
     }
-  }, [isAuthenticated, location.pathname, navigate]);
+  }, [isAuthenticated, location.pathname, navigate, passwordRecoveryPending]);
 
   useEffect(() => {
     if (!isAuthenticated || !boardIdFromUrl || !libraryLoaded) return;
@@ -229,29 +265,32 @@ function App() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setIsAuthenticated(false);
-    setBoards(getDefaultBoards());
-    setMediaItems([]);
-    setCustomGenres([]);
-    setCustomMediaTypes([]);
-    setShowAllBoard(true);
-    setBoardSortMode('alphabetical');
-    setBoardCustomOrder([]);
-    setMediaSortMode('alphabetical');
-    const defaultTheme = createDefaultThemeSettings();
-    setThemeSettings(defaultTheme);
-    setAccentColor(applyAppTheme(defaultTheme));
-    setUser(createDefaultUser());
-    setFriends([]);
-    setLibraryLoaded(false);
+    setPasswordRecoveryPending(false);
+    resetAuthState();
     navigate(APP_ROUTES.library, { replace: true });
     toast.info('Signed out');
+  };
+
+  const handlePasswordResetComplete = async () => {
+    setPasswordRecoveryPending(false);
+    resetAuthState();
+    navigate(APP_ROUTES.library, { replace: true });
   };
 
   useEffect(() => {
     let mounted = true;
 
     const restoreSession = async () => {
+      if (isPasswordRecoveryUrl()) {
+        beginPasswordRecovery();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && mounted) {
+          clearAuthParamsFromUrl();
+        }
+        if (mounted) setAuthChecking(false);
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
 
       if (session?.user && mounted) {
@@ -286,22 +325,14 @@ function App() {
       async (event, _session) => {
         if (!mounted) return;
 
+        if (event === 'PASSWORD_RECOVERY') {
+          beginPasswordRecovery(true);
+          return;
+        }
+
         if (event === 'SIGNED_OUT') {
-          setIsAuthenticated(false);
-          setLibraryLoaded(false);
-          setBoards(getDefaultBoards());
-          setMediaItems([]);
-          setFriends([]);
-          setCustomGenres([]);
-          setCustomMediaTypes([]);
-          setShowAllBoard(true);
-          setBoardSortMode('alphabetical');
-          setBoardCustomOrder([]);
-          setMediaSortMode('alphabetical');
-          const defaultTheme = createDefaultThemeSettings();
-          setThemeSettings(defaultTheme);
-          setAccentColor(applyAppTheme(defaultTheme));
-          setUser(createDefaultUser());
+          setPasswordRecoveryPending(false);
+          resetAuthState();
         }
       },
     );
@@ -725,7 +756,6 @@ function App() {
   const handleSaveAccountSettings = async (data: {
     username: string;
     email: string;
-    bio: string;
     avatar?: string;
   }) => {
     try {
@@ -734,7 +764,6 @@ function App() {
 
       let nextUsername = user.username;
       let nextEmail = user.email ?? data.email;
-      let nextBio = data.bio.trim();
       let nextAvatar = user.avatar;
 
       if (data.username !== user.username) {
@@ -748,17 +777,15 @@ function App() {
 
       const profile = await updateUserProfile(authUser.id, {
         displayName: user.displayName,
-        bio: data.bio,
+        bio: user.bio ?? '',
         avatar: data.avatar,
       });
-      nextBio = profile.bio ?? nextBio;
       nextAvatar = profile.avatar;
 
       setUser({
         ...user,
         username: nextUsername,
         email: nextEmail,
-        bio: nextBio,
         avatar: nextAvatar,
       });
       toast.success('Account saved');
@@ -767,6 +794,11 @@ function App() {
       toast.error(message);
       throw error;
     }
+  };
+
+  const handleChangePassword = async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
   };
 
   const handleDeleteAccount = async () => {
@@ -797,6 +829,19 @@ function App() {
         <Toaster position="top-center" richColors />
         <p className="text-muted-foreground">Loading...</p>
       </div>
+    );
+  }
+
+  if (passwordRecoveryPending) {
+    return (
+      <>
+        <Toaster position="top-center" richColors />
+        <AuthPage
+          initialMode="reset"
+          onAuthSuccess={handleAuthSuccess}
+          onPasswordResetComplete={handlePasswordResetComplete}
+        />
+      </>
     );
   }
 
@@ -1011,10 +1056,10 @@ function App() {
         onSaveTheme={handleSaveTheme}
         email={user.email}
         username={user.username}
-        bio={user.bio}
         avatar={user.avatar}
         displayName={user.displayName}
         onSaveAccountSettings={handleSaveAccountSettings}
+        onChangePassword={handleChangePassword}
         onDeleteAccount={handleDeleteAccount}
         customGenres={customGenres}
         customMediaTypes={customMediaTypes}

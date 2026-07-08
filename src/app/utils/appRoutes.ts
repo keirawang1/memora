@@ -4,6 +4,7 @@ export const APP_ROUTES = {
   recommendations: '/recommendations',
   friends: '/friends',
   profile: '/profile',
+  resetPassword: '/reset-password',
   user: (userId: string) => `/user/${userId}`,
 } as const;
 
@@ -34,6 +35,10 @@ export function getUserIdFromPath(pathname: string): string | null {
 
 export function isProfilePath(pathname: string): boolean {
   return pathname === APP_ROUTES.profile;
+}
+
+export function isResetPasswordPath(pathname: string): boolean {
+  return pathname === APP_ROUTES.resetPassword;
 }
 
 export function isKnownAppPath(pathname: string): boolean {
