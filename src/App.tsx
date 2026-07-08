@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './app/components/ui/tabs';
 import { LibraryPage } from './app/components/LibraryPage';
 import { BoardDetailPage } from './app/components/BoardDetailPage';
@@ -65,19 +66,27 @@ import {
   createDefaultThemeSettings,
   type AppThemeSettings,
 } from './app/utils/appTheme';
+import {
+  APP_ROUTES,
+  getBoardIdFromPath,
+  getTabFromPath,
+  getUserIdFromPath,
+  isKnownAppPath,
+  isProfilePath,
+  tabToRoute,
+  type AppTab,
+} from './app/utils/appRoutes';
 
 function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [boards, setBoards] = useState<Board[]>(getDefaultBoards());
   const [friends, setFriends] = useState<Friend[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
-  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [addBoardDialogOpen, setAddBoardDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('library');
-  const [showProfile, setShowProfile] = useState(false);
-  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [themeSettings, setThemeSettings] = useState<AppThemeSettings>(
     createDefaultThemeSettings(),
   );
@@ -93,7 +102,36 @@ function App() {
   const [mediaSortMode, setMediaSortMode] = useState<SortMode>('alphabetical');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
+
+  const boardIdFromUrl = getBoardIdFromPath(location.pathname);
+  const viewingUserId = getUserIdFromPath(location.pathname);
+  const showProfile = isProfilePath(location.pathname);
+  const activeTab: AppTab = getTabFromPath(location.pathname) ?? 'library';
+
+  const selectedBoard = useMemo(() => {
+    if (!boardIdFromUrl) return null;
+    return boards.find((board) => board.id === boardIdFromUrl) ?? null;
+  }, [boardIdFromUrl, boards]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (location.pathname === '/') {
+      navigate(APP_ROUTES.library, { replace: true });
+      return;
+    }
+    if (!isKnownAppPath(location.pathname)) {
+      navigate(APP_ROUTES.library, { replace: true });
+    }
+  }, [isAuthenticated, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !boardIdFromUrl || !libraryLoaded) return;
+    if (!boards.some((board) => board.id === boardIdFromUrl)) {
+      navigate(APP_ROUTES.library, { replace: true });
+    }
+  }, [isAuthenticated, boardIdFromUrl, boards, libraryLoaded, navigate]);
 
   const loadUserTagPreferences = async (userId: string) => {
     try {
@@ -163,6 +201,8 @@ function App() {
       const message = error instanceof Error ? error.message : 'Failed to load friends';
       toast.error(message);
       setFriends([]);
+    } finally {
+      setLibraryLoaded(true);
     }
   };
 
@@ -202,10 +242,9 @@ function App() {
     setThemeSettings(defaultTheme);
     setAccentColor(applyAppTheme(defaultTheme));
     setUser(createDefaultUser());
-    setShowProfile(false);
-    setViewingUserId(null);
-    setSelectedBoard(null);
     setFriends([]);
+    setLibraryLoaded(false);
+    navigate(APP_ROUTES.library, { replace: true });
     toast.info('Signed out');
   };
 
@@ -249,6 +288,7 @@ function App() {
 
         if (event === 'SIGNED_OUT') {
           setIsAuthenticated(false);
+          setLibraryLoaded(false);
           setBoards(getDefaultBoards());
           setMediaItems([]);
           setFriends([]);
@@ -337,11 +377,11 @@ function App() {
   };
 
   const handleBoardClick = (board: Board) => {
-    setSelectedBoard(board);
+    navigate(APP_ROUTES.libraryBoard(board.id));
   };
 
   const handleBackToLibrary = () => {
-    setSelectedBoard(null);
+    navigate(APP_ROUTES.library);
   };
 
   const handleMediaClick = (media: MediaItem) => {
@@ -423,7 +463,6 @@ function App() {
         coverImageDataUrl,
       });
       setBoards((prev) => prev.map((board) => (board.id === boardId ? updated : board)));
-      setSelectedBoard((prev) => (prev?.id === boardId ? updated : prev));
       toast.success('Board settings updated');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update board';
@@ -435,7 +474,9 @@ function App() {
     try {
       await deleteBoard(boardId);
       setBoards((prev) => prev.filter((board) => board.id !== boardId));
-      setSelectedBoard(null);
+      if (boardIdFromUrl === boardId) {
+        navigate(APP_ROUTES.library);
+      }
       toast.success('Board deleted successfully');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete board';
@@ -533,7 +574,7 @@ function App() {
       await updateUserShowAllBoard(user.id, data.showAllBoard);
       setShowAllBoard(data.showAllBoard);
       if (!data.showAllBoard && selectedBoard && isAllBoard(selectedBoard)) {
-        setSelectedBoard(null);
+        navigate(APP_ROUTES.library);
       }
       toast.success('Library settings saved');
     } catch (error) {
@@ -579,27 +620,40 @@ function App() {
 
   const handleViewUserProfile = (userId: string) => {
     if (userId === user.id) {
-      setViewingUserId(null);
-      setShowProfile(true);
-      setSelectedBoard(null);
+      navigate(APP_ROUTES.profile);
       return;
     }
-    setViewingUserId(userId);
-    setShowProfile(false);
-    setSelectedBoard(null);
+    navigate(APP_ROUTES.user(userId));
   };
 
   const handleGoToLibrary = () => {
-    setViewingUserId(null);
-    setShowProfile(false);
-    setSelectedBoard(null);
-    setActiveTab('library');
+    navigate(APP_ROUTES.library);
   };
 
   const handleViewOwnProfile = () => {
-    setViewingUserId(null);
-    setShowProfile(true);
-    setSelectedBoard(null);
+    navigate(APP_ROUTES.profile);
+  };
+
+  const handleTabChange = (tab: string) => {
+    if (tab === 'library' || tab === 'recommendations' || tab === 'friends') {
+      navigate(tabToRoute(tab));
+    }
+  };
+
+  const handleBackFromProfile = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate(APP_ROUTES.library);
+  };
+
+  const handleBackFromUserProfile = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate(APP_ROUTES.friends);
   };
 
   const handleUpdateProfile = async (data: { displayName: string; bio: string; avatar?: string }) => {
@@ -661,11 +715,6 @@ function App() {
       setBoards((prev) =>
         prev.map((b) => (b.id === boardId ? { ...b, mediaIds: updated.mediaIds } : b)),
       );
-      if (selectedBoard?.id === boardId) {
-        setSelectedBoard((prev) =>
-          prev ? { ...prev, mediaIds: updated.mediaIds } : prev,
-        );
-      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save media order';
       toast.error(message);
@@ -786,11 +835,7 @@ function App() {
               <NotificationCenter
                 accentColor={accentColor}
                 refreshKey={notificationRefreshKey}
-                onOpenFriends={() => {
-                  setViewingUserId(null);
-                  setShowProfile(false);
-                  setActiveTab('friends');
-                }}
+                onOpenFriends={() => navigate(APP_ROUTES.friends)}
                 onViewUserProfile={handleViewUserProfile}
               />
               <div className="hidden sm:block">
@@ -837,13 +882,13 @@ function App() {
         {viewingUserId ? (
           <UserProfilePage
             userId={viewingUserId}
-            onBack={() => setViewingUserId(null)}
+            onBack={handleBackFromUserProfile}
             accentColor={accentColor}
           />
         ) : showProfile ? (
           <div className="space-y-6">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" onClick={() => setShowProfile(false)}>
+              <Button variant="ghost" onClick={handleBackFromProfile}>
                 ← Back
               </Button>
               <h1>Profile</h1>
@@ -856,7 +901,7 @@ function App() {
             />
           </div>
         ) : (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
             <TabsList className="grid w-full grid-cols-3 h-auto">
               <TabsTrigger value="library" className="flex items-center gap-2">
                 <Library className="w-4 h-4" />
@@ -873,13 +918,12 @@ function App() {
             </TabsList>
 
           <TabsContent value="library" className="mt-6">
-            {selectedBoard ? (
+            {boardIdFromUrl && !selectedBoard ? (
+              <p className="text-muted-foreground">Loading board...</p>
+            ) : selectedBoard ? (
               <BoardDetailPage
-                board={boards.find(b => b.id === selectedBoard.id) ?? selectedBoard}
-                mediaItems={getBoardMediaItems(
-                  boards.find(b => b.id === selectedBoard.id) ?? selectedBoard,
-                  mediaItems,
-                )}
+                board={selectedBoard}
+                mediaItems={getBoardMediaItems(selectedBoard, mediaItems)}
                 onBack={handleBackToLibrary}
                 onMediaClick={handleMediaClick}
                 onUpdateBoard={handleUpdateBoard}
@@ -934,7 +978,7 @@ function App() {
       <AddMediaDialog
         onAdd={handleAddMedia}
         boards={boards}
-        currentBoardId={selectedBoard?.id}
+        currentBoardId={boardIdFromUrl ?? undefined}
         customGenres={customGenres}
         customMediaTypes={customMediaTypes}
       />
