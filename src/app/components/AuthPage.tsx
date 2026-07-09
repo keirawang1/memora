@@ -1,4 +1,5 @@
 import { useState, useEffect, type ChangeEvent, type KeyboardEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -14,8 +15,11 @@ import {
   getAuthEmailCooldownSeconds,
   recordAuthEmailSent,
 } from '../utils/authEmail';
-
-type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset';
+import {
+  authModeToRoute,
+  getAuthModeFromPath,
+  type AuthMode,
+} from '../utils/appRoutes';
 
 function PasswordInput({
   id,
@@ -80,17 +84,19 @@ export function AuthPage({
   onAuthSuccess,
   onPasswordResetComplete,
 }: AuthPageProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [mode, setMode] = useState<AuthMode>(initialMode);
+  const mode = getAuthModeFromPath(location.pathname) ?? initialMode;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [emailCooldownSeconds, setEmailCooldownSeconds] = useState(0);
 
-  useEffect(() => {
-    setMode(initialMode);
-  }, [initialMode]);
+  const goToAuthMode = (next: AuthMode) => {
+    navigate(authModeToRoute(next));
+  };
 
   useEffect(() => {
     if (mode !== 'forgot' || !email.trim()) {
@@ -204,7 +210,7 @@ export function AuthPage({
         const signInMsg = (signInError?.message ?? '').toLowerCase();
         if (signInMsg.includes('not confirmed')) {
           toast.success('Check your email to confirm your account, then sign in.');
-          setMode('signin');
+          goToAuthMode('signin');
           setPassword('');
           return;
         }
@@ -227,7 +233,7 @@ export function AuthPage({
         toast.success('Account created successfully!');
       } else {
         toast.success('Check your email to confirm your account, then sign in.');
-        setMode('signin');
+        goToAuthMode('signin');
         setPassword('');
       }
     } catch (error: unknown) {
@@ -263,7 +269,7 @@ export function AuthPage({
       recordAuthEmailSent(trimmedEmail);
       setEmailCooldownSeconds(getAuthEmailCooldownSeconds(trimmedEmail));
       toast.success('Check your email for a password reset link');
-      setMode('signin');
+      goToAuthMode('signin');
       setPassword('');
     } catch (error: unknown) {
       toast.error(formatAuthEmailError(error));
@@ -294,7 +300,7 @@ export function AuthPage({
       if (onPasswordResetComplete) {
         await onPasswordResetComplete();
       } else {
-        setMode('signin');
+        goToAuthMode('signin');
       }
       setPassword('');
       setConfirmPassword('');
@@ -358,7 +364,7 @@ export function AuthPage({
                     type="button"
                     className="text-xs text-primary underline"
                     onClick={() => {
-                      setMode('forgot');
+                      goToAuthMode('forgot');
                       setPassword('');
                       setShowPassword(false);
                     }}
@@ -391,7 +397,7 @@ export function AuthPage({
                   type="button"
                   className="text-primary underline"
                   onClick={() => {
-                    setMode('signup');
+                    goToAuthMode('signup');
                     setPassword('');
                     setShowPassword(false);
                   }}
@@ -441,7 +447,7 @@ export function AuthPage({
                 <button
                   type="button"
                   className="text-primary underline"
-                  onClick={() => setMode('signin')}
+                  onClick={() => goToAuthMode('signin')}
                   disabled={isLoading}
                 >
                   Back to sign in
@@ -536,7 +542,7 @@ export function AuthPage({
                   type="button"
                   className="text-primary underline"
                   onClick={() => {
-                    setMode('signin');
+                    goToAuthMode('signin');
                     setPassword('');
                     setShowPassword(false);
                   }}

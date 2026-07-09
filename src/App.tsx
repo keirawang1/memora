@@ -73,7 +73,9 @@ import {
   getUserIdFromPath,
   isKnownAppPath,
   isProfilePath,
+  isPublicAuthPath,
   isResetPasswordPath,
+  isSignInFlowPath,
   tabToRoute,
   type AppTab,
 } from './app/utils/appRoutes';
@@ -151,9 +153,24 @@ function App() {
   };
 
   useEffect(() => {
+    if (authChecking || passwordRecoveryPending) return;
+    if (isAuthenticated) return;
+    if (location.pathname === APP_ROUTES.resetPassword) {
+      navigate(APP_ROUTES.signIn, { replace: true });
+      return;
+    }
+    if (isPublicAuthPath(location.pathname)) return;
+    navigate(APP_ROUTES.signIn, { replace: true });
+  }, [authChecking, isAuthenticated, passwordRecoveryPending, location.pathname, navigate]);
+
+  useEffect(() => {
     if (passwordRecoveryPending) return;
     if (!isAuthenticated) return;
     if (location.pathname === '/') {
+      navigate(APP_ROUTES.library, { replace: true });
+      return;
+    }
+    if (isSignInFlowPath(location.pathname)) {
       navigate(APP_ROUTES.library, { replace: true });
       return;
     }
@@ -261,20 +278,21 @@ function App() {
     });
     setIsAuthenticated(true);
     void loadLibraryForUser();
+    navigate(APP_ROUTES.library, { replace: true });
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setPasswordRecoveryPending(false);
     resetAuthState();
-    navigate(APP_ROUTES.library, { replace: true });
+    navigate(APP_ROUTES.signIn, { replace: true });
     toast.info('Signed out');
   };
 
   const handlePasswordResetComplete = async () => {
     setPasswordRecoveryPending(false);
     resetAuthState();
-    navigate(APP_ROUTES.library, { replace: true });
+    navigate(APP_ROUTES.signIn, { replace: true });
   };
 
   useEffect(() => {
@@ -333,6 +351,7 @@ function App() {
         if (event === 'SIGNED_OUT') {
           setPasswordRecoveryPending(false);
           resetAuthState();
+          navigate(APP_ROUTES.signIn, { replace: true });
         }
       },
     );
@@ -983,6 +1002,7 @@ function App() {
               <LibraryPage
                 boards={visibleBoards}
                 mediaItems={mediaItems}
+                boardsLoading={!libraryLoaded}
                 onBoardClick={handleBoardClick}
                 onCreateBoard={handleCreateBoard}
                 accentColor={accentColor}

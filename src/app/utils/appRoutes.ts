@@ -1,14 +1,63 @@
 export const APP_ROUTES = {
+  signIn: '/sign-in',
+  signUp: '/sign-up',
+  forgotPassword: '/forgot-password',
+  resetPassword: '/reset-password',
   library: '/library',
   libraryBoard: (boardId: string) => `/library/${boardId}`,
   recommendations: '/recommendations',
   friends: '/friends',
   profile: '/profile',
-  resetPassword: '/reset-password',
   user: (userId: string) => `/user/${userId}`,
 } as const;
 
+export type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset';
+
 export type AppTab = 'library' | 'recommendations' | 'friends';
+
+export function authModeToRoute(mode: AuthMode): string {
+  switch (mode) {
+    case 'signin':
+      return APP_ROUTES.signIn;
+    case 'signup':
+      return APP_ROUTES.signUp;
+    case 'forgot':
+      return APP_ROUTES.forgotPassword;
+    case 'reset':
+      return APP_ROUTES.resetPassword;
+  }
+}
+
+export function getAuthModeFromPath(pathname: string): AuthMode | null {
+  switch (pathname) {
+    case APP_ROUTES.signIn:
+      return 'signin';
+    case APP_ROUTES.signUp:
+      return 'signup';
+    case APP_ROUTES.forgotPassword:
+      return 'forgot';
+    case APP_ROUTES.resetPassword:
+      return 'reset';
+    default:
+      return null;
+  }
+}
+
+export function isPublicAuthPath(pathname: string): boolean {
+  return (
+    pathname === APP_ROUTES.signIn ||
+    pathname === APP_ROUTES.signUp ||
+    pathname === APP_ROUTES.forgotPassword
+  );
+}
+
+export function isSignInFlowPath(pathname: string): boolean {
+  return (
+    pathname === APP_ROUTES.signIn ||
+    pathname === APP_ROUTES.signUp ||
+    pathname === APP_ROUTES.forgotPassword
+  );
+}
 
 export function getTabFromPath(pathname: string): AppTab | null {
   if (pathname === APP_ROUTES.library || pathname.startsWith(`${APP_ROUTES.library}/`)) {

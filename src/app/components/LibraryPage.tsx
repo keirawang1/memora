@@ -6,7 +6,7 @@ import { SearchFilterBar } from './SearchFilterBar';
 import { SortOrderControl } from './SortOrderControl';
 import { ReorderableGrid } from './ReorderableGrid';
 import { Button } from './ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, Loader2 } from 'lucide-react';
 import { accentButtonStyle } from '../utils/accentColor';
 import { getBoardMediaItems } from '../data/allBoard';
 import {
@@ -19,6 +19,7 @@ import { sortBoardsForDisplay } from '../data/sortOrder';
 interface LibraryPageProps {
   boards: Board[];
   mediaItems: MediaItem[];
+  boardsLoading?: boolean;
   onBoardClick: (board: Board) => void;
   onCreateBoard?: () => void;
   accentColor?: string;
@@ -32,6 +33,7 @@ interface LibraryPageProps {
 export function LibraryPage({
   boards,
   mediaItems,
+  boardsLoading = false,
   onBoardClick,
   onCreateBoard,
   accentColor = '#5C2B17',
@@ -123,12 +125,19 @@ export function LibraryPage({
       </div>
 
       {sortedBoards.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">
-            {searchQuery || hasActiveFilters
-              ? 'No boards match your search or filters.'
-              : 'No boards found. Create a new board to get started!'}
-          </p>
+        <div className="flex flex-col items-center justify-center gap-3 py-12">
+          {boardsLoading && !searchQuery && !hasActiveFilters ? (
+            <>
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              <p className="text-muted-foreground">Loading boards...</p>
+            </>
+          ) : (
+            <p className="text-muted-foreground">
+              {searchQuery || hasActiveFilters
+                ? 'No boards match your search or filters.'
+                : 'No boards found. Create a new board to get started!'}
+            </p>
+          )}
         </div>
       ) : (
         <ReorderableGrid
