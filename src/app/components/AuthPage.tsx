@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ChangeEvent, type KeyboardEvent } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -8,8 +9,57 @@ import { ensureUserProfile } from '../supabase/users';
 import { toast } from 'sonner';
 import logoImage from '../../assets/logo.png';
 import { getPasswordResetRedirectUrl } from '../utils/authRecovery';
+import {
+  formatAuthEmailError,
+  getAuthEmailCooldownSeconds,
+  recordAuthEmailSent,
+} from '../utils/authEmail';
 
 type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset';
+
+function PasswordInput({
+  id,
+  value,
+  onChange,
+  onKeyDown,
+  disabled,
+  placeholder,
+  visible,
+  onToggleVisible,
+}: {
+  id: string;
+  value: string;
+  onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void;
+  disabled?: boolean;
+  placeholder?: string;
+  visible: boolean;
+  onToggleVisible: () => void;
+}) {
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        type={visible ? 'text' : 'password'}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        disabled={disabled}
+        className="pr-10"
+      />
+      <button
+        type="button"
+        className="absolute inset-y-0 right-0 flex size-9 items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-50"
+        onClick={onToggleVisible}
+        disabled={disabled}
+        aria-label={visible ? 'Hide password' : 'Show password'}
+      >
+        {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+      </button>
+    </div>
+  );
+}
 
 interface AuthPageProps {
   initialMode?: AuthMode;
@@ -35,10 +85,27 @@ export function AuthPage({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailCooldownSeconds, setEmailCooldownSeconds] = useState(0);
 
   useEffect(() => {
     setMode(initialMode);
   }, [initialMode]);
+
+  useEffect(() => {
+    if (mode !== 'forgot' || !email.trim()) {
+      setEmailCooldownSeconds(0);
+      return;
+    }
+
+    const updateCooldown = () => {
+      setEmailCooldownSeconds(getAuthEmailCooldownSeconds(email));
+    };
+
+    updateCooldown();
+    const interval = window.setInterval(updateCooldown, 1000);
+    return () => window.clearInterval(interval);
+  }, [mode, email]);
 
   const completeAuth = async (userId: string, userEmail: string, accessToken: string) => {
     const profile = await ensureUserProfile(userId, userEmail);
@@ -173,23 +240,33 @@ export function AuthPage({
   };
 
   const handleForgotPassword = async () => {
-    if (!email.trim()) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
       toast.error('Please enter your email');
       return;
     }
 
+    const cooldown = getAuthEmailCooldownSeconds(trimmedEmail);
+    if (cooldown > 0) {
+      toast.error(`Please wait ${cooldown} seconds before requesting another reset email.`);
+      return;
+    }
+
+    if (isLoading) return;
+
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
         redirectTo: getPasswordResetRedirectUrl(),
       });
       if (error) throw error;
+      recordAuthEmailSent(trimmedEmail);
+      setEmailCooldownSeconds(getAuthEmailCooldownSeconds(trimmedEmail));
       toast.success('Check your email for a password reset link');
       setMode('signin');
       setPassword('');
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to send reset email';
-      toast.error(message);
+      toast.error(formatAuthEmailError(error));
     } finally {
       setIsLoading(false);
     }
@@ -283,20 +360,22 @@ export function AuthPage({
                     onClick={() => {
                       setMode('forgot');
                       setPassword('');
+                      setShowPassword(false);
                     }}
                     disabled={isLoading}
                   >
                     Forgot password?
                   </button>
                 </div>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
                   disabled={isLoading}
+                  visible={showPassword}
+                  onToggleVisible={() => setShowPassword((prev) => !prev)}
                 />
               </div>
               <Button
@@ -314,6 +393,7 @@ export function AuthPage({
                   onClick={() => {
                     setMode('signup');
                     setPassword('');
+                    setShowPassword(false);
                   }}
                   disabled={isLoading}
                 >
@@ -348,10 +428,14 @@ export function AuthPage({
               </div>
               <Button
                 onClick={handleForgotPassword}
-                disabled={isLoading}
+                disabled={isLoading || emailCooldownSeconds > 0}
                 className="w-full"
               >
-                {isLoading ? 'Sending...' : 'Send Reset Link'}
+                {isLoading
+                  ? 'Sending...'
+                  : emailCooldownSeconds > 0
+                    ? `Wait ${emailCooldownSeconds}s`
+                    : 'Send Reset Link'}
               </Button>
               <p className="text-xs text-muted-foreground text-center">
                 <button
@@ -428,14 +512,15 @@ export function AuthPage({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="signup-password">Password</Label>
-                <Input
+                <PasswordInput
                   id="signup-password"
-                  type="password"
                   placeholder="Create a password (min 6 characters)"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
                   disabled={isLoading}
+                  visible={showPassword}
+                  onToggleVisible={() => setShowPassword((prev) => !prev)}
                 />
               </div>
               <Button
@@ -453,6 +538,7 @@ export function AuthPage({
                   onClick={() => {
                     setMode('signin');
                     setPassword('');
+                    setShowPassword(false);
                   }}
                   disabled={isLoading}
                 >
