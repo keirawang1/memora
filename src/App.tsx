@@ -278,7 +278,9 @@ function App() {
     });
     setIsAuthenticated(true);
     void loadLibraryForUser();
-    navigate(APP_ROUTES.library, { replace: true });
+    if (!isKnownAppPath(location.pathname)) {
+      navigate(APP_ROUTES.library, { replace: true });
+    }
   };
 
   const handleSignOut = async () => {
