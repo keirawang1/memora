@@ -34,6 +34,11 @@ export interface UserTagPreferences {
   librarySort: LibrarySortPreferences;
 }
 
+export interface UserOnboardingState {
+  completed: boolean;
+  preferredGenres: string[];
+}
+
 const DEFAULT_SORT_MODE: SortMode = 'alphabetical';
 
 function parseSortMode(value: unknown): SortMode {
@@ -683,6 +688,64 @@ export async function updateUserShowAllBoard(
   if (error) throw error;
 }
 
+export async function getUserOnboardingState(
+  authUserId: string,
+): Promise<UserOnboardingState> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('onboarding_completed, preferred_genres')
+    .eq('user_id', authUserId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingColumnError(error)) {
+      return { completed: true, preferredGenres: [] };
+    }
+    throw error;
+  }
+
+  const row = data as {
+    onboarding_completed?: boolean | null;
+    preferred_genres?: string[] | null;
+  } | null;
+
+  return {
+    completed: row?.onboarding_completed ?? true,
+    preferredGenres: row?.preferred_genres ?? [],
+  };
+}
+
+export async function saveOnboardingGenres(
+  authUserId: string,
+  preferredGenres: string[],
+): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ preferred_genres: preferredGenres })
+    .eq('user_id', authUserId);
+
+  if (error) {
+    if (isMissingColumnError(error)) {
+      throw new Error('Onboarding is not available yet. Run the latest Supabase migrations.');
+    }
+    throw error;
+  }
+}
+
+export async function completeOnboarding(authUserId: string): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ onboarding_completed: true })
+    .eq('user_id', authUserId);
+
+  if (error) {
+    if (isMissingColumnError(error)) {
+      throw new Error('Onboarding is not available yet. Run the latest Supabase migrations.');
+    }
+    throw error;
+  }
+}
+
 export async function updateUserGenres(
   authUserId: string,
   genres: string[],
@@ -743,6 +806,8 @@ export async function createUserProfile(
     show_all_board: true,
     accent_color: DEFAULT_ACCENT_COLOR,
     theme_mode: 'light',
+    onboarding_completed: false,
+    preferred_genres: [],
   };
 
   let lastError: { code?: string; message?: string } | null = null;

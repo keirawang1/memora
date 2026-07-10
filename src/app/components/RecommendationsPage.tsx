@@ -12,6 +12,7 @@ interface RecommendationsPageProps {
   mediaItems: MediaItem[];
   userId: string;
   boards: Board[];
+  preferredGenres?: string[];
   onAddMedia?: (
     media: Omit<MediaItem, 'id' | 'dateAdded'> & { id?: string },
     boardIds: string[],
@@ -98,6 +99,7 @@ export function RecommendationsPage({
   mediaItems,
   userId,
   boards,
+  preferredGenres = [],
   onAddMedia,
 }: RecommendationsPageProps) {
   const {
@@ -109,7 +111,7 @@ export function RecommendationsPage({
     recommendedLoading,
     trendingLoading,
     refreshRecommended,
-  } = useDiscoveryFeed(mediaItems, userId);
+  } = useDiscoveryFeed(mediaItems, userId, preferredGenres);
   const [addedTitles, setAddedTitles] = useState<Set<string>>(() => {
     return new Set(mediaItems.map((m) => normalizeTitle(m.title)));
   });

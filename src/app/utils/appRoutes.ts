@@ -3,6 +3,7 @@ export const APP_ROUTES = {
   signUp: '/sign-up',
   forgotPassword: '/forgot-password',
   resetPassword: '/reset-password',
+  onboarding: '/onboarding',
   library: '/library',
   libraryBoard: (boardId: string) => `/library/${boardId}`,
   recommendations: '/recommendations',
@@ -90,9 +91,14 @@ export function isResetPasswordPath(pathname: string): boolean {
   return pathname === APP_ROUTES.resetPassword;
 }
 
+export function isOnboardingPath(pathname: string): boolean {
+  return pathname === APP_ROUTES.onboarding;
+}
+
 export function isKnownAppPath(pathname: string): boolean {
   return (
     pathname === '/' ||
+    isOnboardingPath(pathname) ||
     getTabFromPath(pathname) !== null ||
     isProfilePath(pathname) ||
     getUserIdFromPath(pathname) !== null

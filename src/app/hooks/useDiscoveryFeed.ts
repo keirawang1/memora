@@ -32,6 +32,7 @@ const emptySection = { primary: [] as DiscoveryItem[], manga: [] as DiscoveryIte
 export function useDiscoveryFeed(
   mediaItems: MediaItem[],
   userId: string | undefined,
+  preferredGenres: string[] = [],
 ): UseDiscoveryFeedResult {
   const [recommended, setRecommended] = useState<DiscoveryItem[]>([]);
   const [recommendedManga, setRecommendedManga] = useState<DiscoveryItem[]>([]);
@@ -114,8 +115,12 @@ export function useDiscoveryFeed(
     if (trendingLoading) return;
 
     const seedItem = pickSeedItem(mediaItems);
-    const weightedGenres = computeWeightedGenres(mediaItems);
     const typeWeights = computeTypeWeights(mediaItems);
+    const weightedGenres = computeWeightedGenres(mediaItems);
+    const effectiveGenres =
+      weightedGenres.length > 0
+        ? weightedGenres.map((g) => g.name)
+        : preferredGenres;
     const cacheKey = buildRecommendedCacheKey(
       mediaItems,
       seedItem
@@ -127,8 +132,9 @@ export function useDiscoveryFeed(
             source: null,
           }
         : null,
-      weightedGenres.map((g) => g.name),
+      effectiveGenres.slice(0, 5),
       typeWeights,
+      preferredGenres,
     );
 
     const fetchKey = `${userId}:${cacheKey}:${refreshToken}`;
@@ -158,7 +164,7 @@ export function useDiscoveryFeed(
     setRecommendedLoading(true);
 
     const lookupCache = new Map<string, number | null>();
-    fetchRecommendedSection(mediaItems, lookupCache, trendingExcludeRef.current)
+    fetchRecommendedSection(mediaItems, lookupCache, trendingExcludeRef.current, preferredGenres)
       .then((result) => {
         if (cancelled) return;
         setRecommended(result.primary);
@@ -185,7 +191,7 @@ export function useDiscoveryFeed(
     return () => {
       cancelled = true;
     };
-  }, [mediaItems, userId, refreshToken, trendingLoading]);
+  }, [mediaItems, userId, refreshToken, trendingLoading, preferredGenres]);
 
   useEffect(() => {
     if (!userId || trendingLoading || recommendedLoading || trendingAlignedRef.current) return;

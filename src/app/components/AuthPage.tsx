@@ -75,6 +75,7 @@ interface AuthPageProps {
     accessToken: string,
     avatar?: string,
     bio?: string,
+    isNewSignup?: boolean,
   ) => void;
   onPasswordResetComplete?: () => void | Promise<void>;
 }
@@ -113,7 +114,12 @@ export function AuthPage({
     return () => window.clearInterval(interval);
   }, [mode, email]);
 
-  const completeAuth = async (userId: string, userEmail: string, accessToken: string) => {
+  const completeAuth = async (
+    userId: string,
+    userEmail: string,
+    accessToken: string,
+    isNewSignup = false,
+  ) => {
     const profile = await ensureUserProfile(userId, userEmail);
     onAuthSuccess(
       userId,
@@ -123,6 +129,7 @@ export function AuthPage({
       accessToken,
       profile.avatar,
       profile.bio,
+      isNewSignup,
     );
   };
 
@@ -220,7 +227,7 @@ export function AuthPage({
           (signInMsg.includes('invalid') || signInMsg.includes('credentials'))
         ) {
           toast.error(
-            'An account with this email may already exist. Try signing in, or reset your password.',
+            'This email is still registered. Sign in with your previous password, or use Forgot password to set a new one.',
           );
           return;
         }
@@ -321,6 +328,7 @@ export function AuthPage({
       session.user.id,
       session.user.email ?? email,
       session.access_token,
+      true,
     );
   };
 

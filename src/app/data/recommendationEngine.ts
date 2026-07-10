@@ -35,6 +35,24 @@ export function hasEnoughPersonalizationData(items: MediaItem[]): boolean {
   return withGenres.length >= MIN_GENRE_TAGGED_ITEMS || active.length >= MIN_ACTIVE_ITEMS;
 }
 
+export function resolveRecommendationGenres(
+  items: MediaItem[],
+  preferredGenres: string[] = [],
+): string[] {
+  const weighted = computeWeightedGenres(items);
+  if (weighted.length > 0) {
+    return weighted.slice(0, 5).map((g) => g.name);
+  }
+  return preferredGenres.slice(0, 5);
+}
+
+export function isPersonalizedRecommendations(
+  items: MediaItem[],
+  preferredGenres: string[] = [],
+): boolean {
+  return hasEnoughPersonalizationData(items) || preferredGenres.length > 0;
+}
+
 export function normalizeTitle(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -190,8 +208,9 @@ export function buildRecommendedCacheKey(
   seed: DiscoverySeed | null,
   topGenres: string[],
   typeWeights: Record<string, number>,
+  preferredGenres: string[] = [],
 ): string {
-  const personalized = hasEnoughPersonalizationData(items);
+  const personalized = isPersonalizedRecommendations(items, preferredGenres);
   const parts = [
     personalized ? 'personalized' : 'general',
     'v4recs',
@@ -399,10 +418,11 @@ export async function fetchRecommendedPrimary(
   items: MediaItem[],
   lookupCache: Map<string, number | null>,
   exclude: DiscoveryItem[] = [],
+  preferredGenres: string[] = [],
 ): Promise<{ primary: DiscoveryItem[]; seed: DiscoverySeed | null; personalized: boolean }> {
-  const personalized = hasEnoughPersonalizationData(items);
-  const weightedGenres = computeWeightedGenres(items);
-  const malIds = memoraGenresToMal(weightedGenres.slice(0, 5).map((g) => g.name));
+  const personalized = isPersonalizedRecommendations(items, preferredGenres);
+  const genreNames = resolveRecommendationGenres(items, preferredGenres);
+  const malIds = memoraGenresToMal(genreNames);
 
   const animeSeed = pickSeedItemForMediaType(items, 'anime') ?? pickSeedItem(items);
   let seed: DiscoverySeed | null = null;
@@ -416,7 +436,7 @@ export async function fetchRecommendedPrimary(
     items,
     lookupCache,
     exclude,
-    personalized ? malIds : [],
+    malIds,
   );
 
   return { primary, seed, personalized };
@@ -436,17 +456,23 @@ export async function fetchRecommendedSection(
   items: MediaItem[],
   lookupCache: Map<string, number | null>,
   exclude: DiscoveryItem[] = [],
+  preferredGenres: string[] = [],
 ): Promise<DiscoverySectionRows & { seed: DiscoverySeed | null; personalized: boolean }> {
-  const weightedGenres = computeWeightedGenres(items);
-  const malIds = memoraGenresToMal(weightedGenres.slice(0, 5).map((g) => g.name));
-  const personalized = hasEnoughPersonalizationData(items);
+  const genreNames = resolveRecommendationGenres(items, preferredGenres);
+  const malIds = memoraGenresToMal(genreNames);
+  const personalized = isPersonalizedRecommendations(items, preferredGenres);
 
-  const { primary, seed } = await fetchRecommendedPrimary(items, lookupCache, exclude);
+  const { primary, seed } = await fetchRecommendedPrimary(
+    items,
+    lookupCache,
+    exclude,
+    preferredGenres,
+  );
   const manga = await fetchRecommendedMangaRow(
     items,
     lookupCache,
     [...exclude, ...primary],
-    personalized ? malIds : [],
+    malIds,
   );
 
   return { primary, manga, seed, personalized };

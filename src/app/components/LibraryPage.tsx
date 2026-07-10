@@ -118,7 +118,13 @@ export function LibraryPage({
             },
           ]}
         />
-        <Button variant="accent" onClick={onCreateBoard} className="shrink-0" style={accentButtonStyle}>
+        <Button
+          id="onboarding-new-board"
+          variant="accent"
+          onClick={onCreateBoard}
+          className="shrink-0"
+          style={accentButtonStyle}
+        >
           <Plus className="w-4 h-4" />
           New Board
         </Button>

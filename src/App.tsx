@@ -58,9 +58,14 @@ import {
   updateUsername,
   updateUserBoardSort,
   updateUserMediaSort,
+  getUserOnboardingState,
+  saveOnboardingGenres,
+  completeOnboarding,
 } from './app/supabase/users';
 import type { SortMode } from './app/types/sort';
 import { AuthPage } from './app/components/AuthPage';
+import { OnboardingGenrePage } from './app/components/OnboardingGenrePage';
+import { OnboardingTour } from './app/components/OnboardingTour';
 import {
   applyAppTheme,
   createDefaultThemeSettings,
@@ -72,6 +77,7 @@ import {
   getTabFromPath,
   getUserIdFromPath,
   isKnownAppPath,
+  isOnboardingPath,
   isProfilePath,
   isPublicAuthPath,
   isResetPasswordPath,
@@ -112,6 +118,10 @@ function App() {
   const [authChecking, setAuthChecking] = useState(true);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(true);
+  const [preferredGenres, setPreferredGenres] = useState<string[]>([]);
+  const [onboardingLoaded, setOnboardingLoaded] = useState(false);
+  const [showOnboardingTour, setShowOnboardingTour] = useState(false);
 
   const boardIdFromUrl = getBoardIdFromPath(location.pathname);
   const viewingUserId = getUserIdFromPath(location.pathname);
@@ -139,6 +149,10 @@ function App() {
     setThemeSettings(defaultTheme);
     setAccentColor(applyAppTheme(defaultTheme));
     setUser(createDefaultUser());
+    setOnboardingCompleted(true);
+    setPreferredGenres([]);
+    setOnboardingLoaded(false);
+    setShowOnboardingTour(false);
   };
 
   const beginPasswordRecovery = (clearUrl = false) => {
@@ -165,19 +179,39 @@ function App() {
 
   useEffect(() => {
     if (passwordRecoveryPending) return;
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !onboardingLoaded) return;
+    if (!onboardingCompleted) {
+      if (preferredGenres.length === 0) {
+        if (!isOnboardingPath(location.pathname)) {
+          navigate(APP_ROUTES.onboarding, { replace: true });
+        }
+        return;
+      }
+      if (isOnboardingPath(location.pathname)) {
+        navigate(APP_ROUTES.library, { replace: true });
+      }
+      return;
+    }
     if (location.pathname === '/') {
       navigate(APP_ROUTES.library, { replace: true });
       return;
     }
-    if (isSignInFlowPath(location.pathname)) {
+    if (isSignInFlowPath(location.pathname) || isOnboardingPath(location.pathname)) {
       navigate(APP_ROUTES.library, { replace: true });
       return;
     }
     if (!isKnownAppPath(location.pathname)) {
       navigate(APP_ROUTES.library, { replace: true });
     }
-  }, [isAuthenticated, location.pathname, navigate, passwordRecoveryPending]);
+  }, [
+    isAuthenticated,
+    onboardingLoaded,
+    onboardingCompleted,
+    preferredGenres.length,
+    location.pathname,
+    navigate,
+    passwordRecoveryPending,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || !boardIdFromUrl || !libraryLoaded) return;
@@ -249,6 +283,20 @@ function App() {
     }
 
     try {
+      const onboarding = await getUserOnboardingState(user.id);
+      setOnboardingCompleted(onboarding.completed);
+      setPreferredGenres(onboarding.preferredGenres);
+      if (!onboarding.completed && onboarding.preferredGenres.length > 0) {
+        setShowOnboardingTour(true);
+      }
+    } catch {
+      setOnboardingCompleted(true);
+      setPreferredGenres([]);
+    } finally {
+      setOnboardingLoaded(true);
+    }
+
+    try {
       setFriends(await fetchFriends(user.id));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load friends';
@@ -267,6 +315,7 @@ function App() {
     _accessToken: string,
     avatar?: string,
     bio?: string,
+    isNewSignup?: boolean,
   ) => {
     setUser({
       id: userId,
@@ -277,9 +326,41 @@ function App() {
       bio: bio ?? '',
     });
     setIsAuthenticated(true);
+    if (isNewSignup) {
+      setOnboardingCompleted(false);
+      setPreferredGenres([]);
+      setOnboardingLoaded(false);
+      setShowOnboardingTour(false);
+    }
     void loadLibraryForUser();
-    if (!isKnownAppPath(location.pathname)) {
+    if (isNewSignup) {
+      navigate(APP_ROUTES.onboarding, { replace: true });
+    } else if (!isKnownAppPath(location.pathname)) {
       navigate(APP_ROUTES.library, { replace: true });
+    }
+  };
+
+  const handleOnboardingGenresContinue = async (genres: string[]) => {
+    try {
+      await saveOnboardingGenres(user.id, genres);
+      setPreferredGenres(genres);
+      setShowOnboardingTour(true);
+      navigate(APP_ROUTES.library, { replace: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save preferences';
+      toast.error(message);
+      throw error;
+    }
+  };
+
+  const handleOnboardingTourComplete = async () => {
+    try {
+      await completeOnboarding(user.id);
+      setOnboardingCompleted(true);
+      setShowOnboardingTour(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to complete onboarding';
+      toast.error(message);
     }
   };
 
@@ -875,6 +956,35 @@ function App() {
     );
   }
 
+  if (
+    isAuthenticated &&
+    !onboardingLoaded &&
+    !passwordRecoveryPending
+  ) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Toaster position="top-center" richColors />
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (
+    onboardingLoaded &&
+    !onboardingCompleted &&
+    preferredGenres.length === 0
+  ) {
+    return (
+      <>
+        <Toaster position="top-center" richColors />
+        <OnboardingGenrePage
+          accentColor={accentColor}
+          onContinue={handleOnboardingGenresContinue}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Toaster position="top-center" richColors />
@@ -1022,6 +1132,7 @@ function App() {
               mediaItems={mediaItems}
               userId={user.id}
               boards={boards}
+              preferredGenres={preferredGenres}
               onAddMedia={handleAddMedia}
             />
           </TabsContent>
@@ -1090,6 +1201,10 @@ function App() {
         showAllBoard={showAllBoard}
         onSaveLibrarySettings={handleSaveLibrarySettings}
       />
+
+      {showOnboardingTour && (
+        <OnboardingTour onComplete={() => void handleOnboardingTourComplete()} />
+      )}
     </div>
   );
 }

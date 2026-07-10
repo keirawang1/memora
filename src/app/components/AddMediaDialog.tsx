@@ -129,6 +129,7 @@ export function AddMediaDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
+          id="onboarding-add-media"
           type="button"
           style={accentButtonStyle}
           className="rounded-full fixed bottom-6 right-6 h-14 w-14 shadow-lg z-50 hover:opacity-90 transition-opacity flex items-center justify-center"
