@@ -14,14 +14,14 @@ const STEPS: OnboardingStep[] = [
     targetId: 'onboarding-new-board',
     title: 'Create a board',
     description:
-      'Boards organize your media by theme, format, or mood. Tap New Board to create your first collection.',
+      'Boards organize your media by theme, genre, or mood. Tap New Board to create your first collection.',
     placement: 'bottom',
   },
   {
     targetId: 'onboarding-add-media',
     title: 'Add media',
     description:
-      'Use the + button anytime to add anime, manga, movies, and more to your library.',
+      'Use the + button anytime to add anime, manga, movies, and more to your boards.',
     placement: 'top',
   },
 ];

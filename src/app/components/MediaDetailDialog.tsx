@@ -1,5 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -53,6 +63,9 @@ export function MediaDetailDialog({
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [isEditingMedia, setIsEditingMedia] = useState(false);
   const [gallery, setGallery] = useState<string[]>([]);
+  const [previewGalleryImage, setPreviewGalleryImage] = useState<string | null>(null);
+  const [galleryRemoveIndex, setGalleryRemoveIndex] = useState<number | null>(null);
+  const [deleteMediaDialogOpen, setDeleteMediaDialogOpen] = useState(false);
   
   // Edit form state
   const [editTitle, setEditTitle] = useState('');
@@ -88,6 +101,10 @@ export function MediaDetailDialog({
     if (open) {
       setIsEditingMedia(false);
       setIsEditingNotes(false);
+    } else {
+      setPreviewGalleryImage(null);
+      setGalleryRemoveIndex(null);
+      setDeleteMediaDialogOpen(false);
     }
   }, [open, media]);
 
@@ -189,6 +206,13 @@ export function MediaDetailDialog({
     setIsEditingMedia(false);
   };
 
+  const handleDeleteMedia = () => {
+    if (!media) return;
+    onDelete?.(media.id);
+    setDeleteMediaDialogOpen(false);
+    onOpenChange(false);
+  };
+
   const statusColors = {
     'completed': 'bg-green-500',
     'in-progress': 'bg-blue-500',
@@ -207,16 +231,18 @@ export function MediaDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">{isEditingMedia ? 'Edit Media' : media.title}</DialogTitle>
+      <DialogContent className="max-w-7xl max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className={isEditingMedia ? undefined : 'text-2xl'}>
+            {isEditingMedia ? 'Edit Media' : media.title}
+          </DialogTitle>
           <DialogDescription className="sr-only">
             {isEditingMedia ? 'Edit media details including title, type, status, genres, rating, and image' : 'View and manage media details'}
           </DialogDescription>
         </DialogHeader>
 
         {isEditingMedia ? (
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-1">
             <div className="space-y-2">
               <Label htmlFor="edit-title">Title *</Label>
               <Input
@@ -360,18 +386,31 @@ export function MediaDetailDialog({
               <StarRating value={editRating} onChange={setEditRating} />
             </div>
 
-            <div className="flex gap-2 pt-4 border-t">
-              <Button onClick={handleCancelEdit} variant="outline" className="flex-1">
-                Cancel
+            <div className="flex justify-between gap-2 pt-4 border-t">
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setIsEditingMedia(false);
+                  setDeleteMediaDialogOpen(true);
+                }}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Media
               </Button>
-              <Button onClick={handleSaveEdit} className="flex-1">
-                <Save className="w-4 h-4 mr-2" />
-                Save Changes
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={handleCancelEdit} variant="outline">
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveEdit}>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Changes
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <>
+            <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-1">
             <div className="flex items-center gap-4 flex-wrap">
               <Badge variant="outline" className="text-sm">
                 {media.type.toUpperCase()}
@@ -515,27 +554,77 @@ export function MediaDetailDialog({
                 )}
               </div>
               {gallery.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {gallery.map((image, index) => (
-                    <div key={index} className="relative group">
-                      <div className="w-24 h-24 rounded-lg overflow-hidden">
-                        <img
-                          src={image}
-                          alt={`Gallery ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      {!readOnly && (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {gallery.map((image, index) => (
+                      <div key={index} className="relative group">
                         <button
-                          onClick={() => handleRemoveGalleryImage(index)}
-                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                          type="button"
+                          onClick={() => setPreviewGalleryImage(image)}
+                          className="block w-24 h-24 rounded-lg overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                          <X className="w-4 h-4" />
+                          <img
+                            src={image}
+                            alt={`Gallery ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
                         </button>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => setGalleryRemoveIndex(index)}
+                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <Dialog
+                    open={previewGalleryImage !== null}
+                    onOpenChange={(open) => !open && setPreviewGalleryImage(null)}
+                  >
+                    <DialogContent className="max-w-3xl p-2 sm:p-4">
+                      {previewGalleryImage && (
+                        <img
+                          src={previewGalleryImage}
+                          alt="Gallery preview"
+                          className="w-full max-h-[80vh] object-contain rounded-md"
+                        />
                       )}
-                    </div>
-                  ))}
-                </div>
+                    </DialogContent>
+                  </Dialog>
+                  <AlertDialog
+                    open={galleryRemoveIndex !== null}
+                    onOpenChange={(open) => {
+                      if (!open) setGalleryRemoveIndex(null);
+                    }}
+                  >
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Remove image?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This image will be removed from the gallery. This cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => {
+                            if (galleryRemoveIndex !== null) {
+                              handleRemoveGalleryImage(galleryRemoveIndex);
+                              setGalleryRemoveIndex(null);
+                            }
+                          }}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          Remove
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
               ) : (
                 <div className="text-sm text-muted-foreground text-center py-8 border-2 border-dashed rounded-lg">
                   No images yet. Click "Add Images" to upload photos.
@@ -544,8 +633,10 @@ export function MediaDetailDialog({
             </div>
             )}
 
+            </div>
+
             {!readOnly && (
-            <div className="flex gap-2 pt-4 border-t">
+            <div className="pt-4 border-t shrink-0">
               <Button
                 variant="accent"
                 onClick={() => {
@@ -558,25 +649,31 @@ export function MediaDetailDialog({
                 <Pencil className="w-4 h-4 mr-2" />
                 Edit Media
               </Button>
-              <Button 
-                variant="outline" 
-                className="flex-1 text-red-600 hover:text-red-700"
-                onClick={() => {
-                  if (confirm('Are you sure you want to delete this item?')) {
-                    onDelete?.(media.id);
-                    onOpenChange(false);
-                  }
-                }}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </Button>
             </div>
             )}
-          </div>
+          </>
         )}
       </DialogContent>
 
+      <AlertDialog open={deleteMediaDialogOpen} onOpenChange={setDeleteMediaDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{media.title}" from your library. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteMedia}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete Media
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

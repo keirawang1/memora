@@ -303,7 +303,7 @@ export function BoardDetailPage({
                         <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
                         <div>
                           <p className="text-sm">Click to upload an image</p>
-                          <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB</p>
+                          <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 5MB</p>
                         </div>
                       </div>
                     )}
