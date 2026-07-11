@@ -585,7 +585,11 @@ export function MediaDetailDialog({
                     open={previewGalleryImage !== null}
                     onOpenChange={(open) => !open && setPreviewGalleryImage(null)}
                   >
-                    <DialogContent className="max-w-3xl p-2 sm:p-4">
+                    <DialogContent
+                      showCloseButton={false}
+                      className="max-w-3xl p-2 sm:p-4 cursor-pointer"
+                      onClick={() => setPreviewGalleryImage(null)}
+                    >
                       {previewGalleryImage && (
                         <img
                           src={previewGalleryImage}

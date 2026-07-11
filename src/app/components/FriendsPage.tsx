@@ -154,7 +154,11 @@ function PostImagePreview({ src, alt = '' }: { src: string; alt?: string }) {
         <img src={src} alt={alt} className="w-40 h-40 object-cover" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl p-2 sm:p-4">
+        <DialogContent
+          showCloseButton={false}
+          className="max-w-3xl p-2 sm:p-4 cursor-pointer"
+          onClick={() => setOpen(false)}
+        >
           <img src={src} alt={alt} className="w-full max-h-[80vh] object-contain rounded-md" />
         </DialogContent>
       </Dialog>
@@ -220,21 +224,19 @@ function PostComposer({
           rows={3}
         />
         {imagePreview && (
-          <div className="relative inline-block">
+          <div className="relative inline-block group">
             <img
               src={imagePreview}
               alt="Post attachment preview"
               className="w-32 h-32 rounded-lg border object-cover"
             />
-            <Button
+            <button
               type="button"
-              size="sm"
-              variant="secondary"
-              className="absolute top-2 right-2"
               onClick={clearImage}
+              className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
             >
-              Remove
-            </Button>
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
         <div className="flex items-center justify-between gap-2">
