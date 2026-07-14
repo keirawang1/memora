@@ -6,11 +6,12 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
-import { Plus, X, Upload } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { StarRating } from './StarRating';
 import type { MediaType, WatchStatus, Genre, Board } from '../types/media';
 import { BoardMultiSelect } from './BoardMultiSelect';
 import { GenreSelectDropdown } from './GenreSelectDropdown';
+import { CoverImageUpload } from './CoverImageUpload';
 import { isAllBoard } from '../data/allBoard';
 import {
   DEFAULT_GENRES,
@@ -62,17 +63,6 @@ export function AddMediaDialog({
 
   const handleRemoveGenre = (genre: Genre) => {
     setSelectedGenres(selectedGenres.filter((g) => g !== genre));
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImageUpload(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const handleSubmit = async () => {
@@ -255,38 +245,12 @@ export function AddMediaDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Image</Label>
-            <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                id="image-upload"
-              />
-              <label htmlFor="image-upload" className="cursor-pointer block">
-                {imageUpload ? (
-                  <div>
-                    <img
-                      src={imageUpload}
-                      alt="Preview"
-                      className="max-h-32 mx-auto rounded mb-2"
-                    />
-                    <p className="text-sm text-muted-foreground">Click to change image</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                    <div>
-                      <p className="text-sm">Click to upload an image</p>
-                      <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 5MB</p>
-                    </div>
-                  </div>
-                )}
-              </label>
-            </div>
-          </div>
+          <CoverImageUpload
+            label="Image"
+            inputId="image-upload"
+            value={imageUpload}
+            onChange={setImageUpload}
+          />
 
           <div className="space-y-2">
             <Label>Rating</Label>

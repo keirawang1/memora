@@ -17,7 +17,7 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
-import { Upload } from 'lucide-react';
+import { CoverImageUpload } from './CoverImageUpload';
 import {
   BOARD_TYPE_MIXED,
   DEFAULT_GENRES,
@@ -74,7 +74,9 @@ export function BoardDetailPage({
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
-  const readOnlyBoard = readOnly || isAllBoard(board);
+  const isSystemAllBoard = isAllBoard(board);
+  const readOnlyBoard = readOnly || isSystemAllBoard;
+  const canEditBoard = !readOnly;
 
   const allGenres = useMemo(
     () => [...DEFAULT_GENRES, ...customGenres],
@@ -136,25 +138,21 @@ export function BoardDetailPage({
     await onBoardMediaOrderChange(board.id, [...reorderedVisible, ...hidden]);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setBoardImageUpload(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   const handleSaveSettings = () => {
-    onUpdateBoard(board.id, {
-      isPublic,
-      name: boardName,
-      description: boardDescription,
-      type: boardMediaType,
-      ...(boardImageUpload && { coverImageDataUrl: boardImageUpload }),
-    });
+    if (isSystemAllBoard) {
+      if (!boardImageUpload) return;
+      onUpdateBoard(board.id, {
+        coverImageDataUrl: boardImageUpload,
+      });
+    } else {
+      onUpdateBoard(board.id, {
+        isPublic,
+        name: boardName,
+        description: boardDescription,
+        type: boardMediaType,
+        ...(boardImageUpload && { coverImageDataUrl: boardImageUpload }),
+      });
+    }
     setEditDialogOpen(false);
   };
 
@@ -233,7 +231,7 @@ export function BoardDetailPage({
             ]}
           />
 
-          {!readOnlyBoard && (
+          {canEditBoard && (
           <>
           <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
             <DialogTrigger asChild>
@@ -246,10 +244,14 @@ export function BoardDetailPage({
             <DialogHeader>
               <DialogTitle>Edit Board</DialogTitle>
               <DialogDescription className="sr-only">
-                Edit board details including name, description, visibility, and cover image
+                {isSystemAllBoard
+                  ? 'Change the cover image for the All board'
+                  : 'Edit board details including name, description, visibility, and cover image'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              {!isSystemAllBoard && (
+              <>
               <div className="space-y-2">
                 <Label htmlFor="boardName">Board Name</Label>
                 <Input
@@ -268,49 +270,19 @@ export function BoardDetailPage({
                   onChange={setBoardMediaType}
                 />
               </div>
+              </>
+              )}
 
-              <div className="space-y-2">
-                <Label>Board Cover Image</Label>
-                <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    id="board-edit-image-upload"
-                  />
-                  <label htmlFor="board-edit-image-upload" className="cursor-pointer block">
-                    {boardImageUpload ? (
-                      <div>
-                        <img 
-                          src={boardImageUpload} 
-                          alt="Preview" 
-                          className="max-h-32 mx-auto rounded mb-2"
-                        />
-                        <p className="text-sm text-muted-foreground">Click to change image</p>
-                      </div>
-                    ) : board.coverImage ? (
-                      <div>
-                        <img 
-                          src={board.coverImage} 
-                          alt="Current" 
-                          className="max-h-32 mx-auto rounded mb-2"
-                        />
-                        <p className="text-sm text-muted-foreground">Click to change image</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                        <div>
-                          <p className="text-sm">Click to upload an image</p>
-                          <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 5MB</p>
-                        </div>
-                      </div>
-                    )}
-                  </label>
-                </div>
-              </div>
+              <CoverImageUpload
+                label="Board Cover Image"
+                inputId="board-edit-image-upload"
+                value={boardImageUpload}
+                existingUrl={board.coverImage}
+                onChange={setBoardImageUpload}
+              />
 
+              {!isSystemAllBoard && (
+              <>
               <div className="space-y-2">
                 <Label htmlFor="boardDescription">Description</Label>
                 <Textarea
@@ -336,8 +308,11 @@ export function BoardDetailPage({
                   onCheckedChange={setIsPublic}
                 />
               </div>
+              </>
+              )}
             </div>
-            <div className="flex justify-between gap-2">
+            <div className={`flex gap-2 ${isSystemAllBoard ? 'justify-end' : 'justify-between'}`}>
+              {!isSystemAllBoard && (
               <Button 
                 variant="destructive" 
                 onClick={() => {
@@ -348,11 +323,15 @@ export function BoardDetailPage({
                 <Trash2 className="w-4 h-4 mr-2" />
                 Delete Board
               </Button>
+              )}
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleSaveSettings}>
+                <Button
+                  onClick={handleSaveSettings}
+                  disabled={isSystemAllBoard && !boardImageUpload}
+                >
                   Save Changes
                 </Button>
               </div>
@@ -360,12 +339,13 @@ export function BoardDetailPage({
           </DialogContent>
         </Dialog>
 
+        {!isSystemAllBoard && (
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Are you sure?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently delete the board "{board.name}" and remove all media from it. This action cannot be undone.
+                This will permanently delete the board "{board.name}" and remove all media exclusive to it. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -379,6 +359,7 @@ export function BoardDetailPage({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        )}
           </>
           )}
         </div>

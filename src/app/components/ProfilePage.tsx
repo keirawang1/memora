@@ -3,11 +3,14 @@ import type { User, MediaItem } from '../types/media';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { UserAvatar } from './UserAvatar';
 import { Button } from './ui/button';
-import { Film, Tv, Sparkles, BookOpen, Book, Activity, Pencil } from 'lucide-react';
+import { Activity, Pencil } from 'lucide-react';
 import {
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -26,19 +29,18 @@ interface ProfilePageProps {
   onUpdateProfile?: (data: { displayName: string; bio: string; avatar?: string }) => void | Promise<void>;
 }
 
-const typeIconMap: Record<string, { icon: typeof Film; color: string }> = {
-  movie: { icon: Film, color: '#8b5cf6' },
-  tv: { icon: Tv, color: '#3b82f6' },
-  anime: { icon: Sparkles, color: '#ec4899' },
-  comic: { icon: BookOpen, color: '#f59e0b' },
-  book: { icon: Book, color: '#10b981' },
-};
-
-function mediaTypeStatLabel(type: string, count: number): string {
-  const base = formatMediaTypeLabel(type);
-  if (type === 'tv') return count === 1 ? base : `${base}s`;
-  return count === 1 ? base : `${base}s`;
-}
+const PIE_COLORS = [
+  '#ec4899',
+  '#8b5cf6',
+  '#3b82f6',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#14b8a6',
+  '#a855f7',
+  '#f97316',
+  '#06b6d4',
+];
 
 function buildLastTwelveMonthsActivity(items: MediaItem[]) {
   const now = new Date();
@@ -123,30 +125,18 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
 
   const chartColor = accentColor ?? DEFAULT_ACCENT_COLOR;
 
-  const typeCounts = useMemo(() => computeMediaTypeCounts(mediaItems), [mediaItems]);
-
-  const statCards = useMemo(() => {
-    const entries = Object.entries(typeCounts).filter(([, count]) => count > 0);
-
-    return sortMediaTypes(entries.map(([type]) => type)).map((type) => {
-      const count = typeCounts[type];
-      const key = type.toLowerCase();
-      const typeConfig = typeIconMap[key] ?? { icon: Sparkles, color: '#ec4899' };
-
-      return {
-        type,
-        icon: typeConfig.icon,
-        iconColor: typeConfig.color,
-        label: mediaTypeStatLabel(type, count),
-        value: count,
-      };
-    });
-  }, [typeCounts]);
+  const typeChartData = useMemo(() => {
+    const counts = computeMediaTypeCounts(mediaItems);
+    return sortMediaTypes(Object.keys(counts).filter((t) => counts[t] > 0)).map((type) => ({
+      name: formatMediaTypeLabel(type),
+      value: counts[type],
+    }));
+  }, [mediaItems]);
 
   const genreChartData = useMemo(() => computeGenreCounts(mediaItems), [mediaItems]);
 
   const monthlyData = useMemo(() => buildLastTwelveMonthsActivity(mediaItems), [mediaItems]);
-  const genreMax = genreChartData[0]?.value ?? 1;
+  const typeMax = Math.max(1, ...typeChartData.map((d) => d.value));
 
   return (
     <>
@@ -198,33 +188,6 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
         <div>
           <h2 className="mb-4">Analytics</h2>
 
-          {statCards.length > 0 && (
-            <div className="flex flex-wrap gap-3 mb-6">
-              {statCards.map((stat) => {
-                const Icon = stat.icon;
-                return (
-                  <div
-                    key={stat.type}
-                    className="aspect-square w-[120px] rounded-lg border bg-card flex flex-col justify-between p-2 min-w-0"
-                  >
-                    <div className="flex items-center gap-1 min-w-0">
-                      <Icon
-                        className="w-3 h-3 shrink-0"
-                        style={{ color: stat.iconColor }}
-                      />
-                      <span className="text-[12px] font-medium truncate leading-tight">
-                        {stat.label}
-                      </span>
-                    </div>
-                    <span className="text-xl font-bold tabular-nums leading-none">
-                      {stat.value}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
           <div className="grid grid-cols-1 gap-6">
             <Card>
               <CardHeader>
@@ -232,8 +195,47 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
               </CardHeader>
               <CardContent className="min-w-0">
                 {genreChartData.length > 0 ? (
+                  <div className="w-full h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={genreChartData}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius="80%"
+                          label={({ name, percent }) =>
+                            `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
+                          }
+                        >
+                          {genreChartData.map((_, index) => (
+                            <Cell
+                              key={genreChartData[index].name}
+                              fill={PIE_COLORS[index % PIE_COLORS.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip labelStyle={{ color: '#000' }} itemStyle={{ color: '#000' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                    No genres in your library yet
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Media Types</CardTitle>
+              </CardHeader>
+              <CardContent className="min-w-0">
+                {typeChartData.length > 0 ? (
                   <ul className="space-y-3">
-                    {genreChartData.map(({ name, value }) => (
+                    {typeChartData.map(({ name, value }) => (
                       <li key={name}>
                         <div className="flex items-center justify-between gap-3 mb-1.5 text-sm">
                           <span className="font-medium truncate">{name}</span>
@@ -243,7 +245,7 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
                           <div
                             className="h-full rounded-full transition-[width] duration-300"
                             style={{
-                              width: `${(value / genreMax) * 100}%`,
+                              width: `${(value / typeMax) * 100}%`,
                               backgroundColor: chartColor,
                             }}
                           />
@@ -253,7 +255,7 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
                   </ul>
                 ) : (
                   <div className="flex items-center justify-center h-[200px] text-muted-foreground">
-                    No genres in your library yet
+                    No media types in your library yet
                   </div>
                 )}
               </CardContent>

@@ -41,7 +41,7 @@ export async function ensureAllBoard(userId: string): Promise<string> {
     .from('boards')
     .insert({
       name: ALL_BOARD_NAME,
-      description: 'All media in your library',
+      description: '',
       is_public: false,
       is_system: true,
       cover_image: null,

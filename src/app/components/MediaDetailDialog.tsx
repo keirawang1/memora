@@ -16,11 +16,12 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
-import { Calendar, Tag, Trash2, Save, Pencil, X, Upload, ExternalLink } from 'lucide-react';
+import { Calendar, Tag, Trash2, Save, Pencil, X, Upload, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { StarRating, formatRating } from './StarRating';
 import type { MediaItem, MediaType, WatchStatus, Genre, Board } from '../types/media';
 import { BoardMultiSelect } from './BoardMultiSelect';
 import { GenreSelectDropdown } from './GenreSelectDropdown';
+import { CoverImageUpload } from './CoverImageUpload';
 import {
   DEFAULT_GENRES,
   DEFAULT_MEDIA_TYPES,
@@ -63,7 +64,7 @@ export function MediaDetailDialog({
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [isEditingMedia, setIsEditingMedia] = useState(false);
   const [gallery, setGallery] = useState<string[]>([]);
-  const [previewGalleryImage, setPreviewGalleryImage] = useState<string | null>(null);
+  const [previewGalleryIndex, setPreviewGalleryIndex] = useState<number | null>(null);
   const [galleryRemoveIndex, setGalleryRemoveIndex] = useState<number | null>(null);
   const [deleteMediaDialogOpen, setDeleteMediaDialogOpen] = useState(false);
   
@@ -102,11 +103,32 @@ export function MediaDetailDialog({
       setIsEditingMedia(false);
       setIsEditingNotes(false);
     } else {
-      setPreviewGalleryImage(null);
+      setPreviewGalleryIndex(null);
       setGalleryRemoveIndex(null);
       setDeleteMediaDialogOpen(false);
     }
   }, [open, media]);
+
+  useEffect(() => {
+    if (previewGalleryIndex === null || gallery.length < 2) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setPreviewGalleryIndex((i) =>
+          i === null ? i : (i - 1 + gallery.length) % gallery.length,
+        );
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setPreviewGalleryIndex((i) =>
+          i === null ? i : (i + 1) % gallery.length,
+        );
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [previewGalleryIndex, gallery.length]);
 
   const allGenres = useMemo(
     () => [...DEFAULT_GENRES, ...customGenres],
@@ -122,17 +144,6 @@ export function MediaDetailDialog({
     if (!media) return;
     onUpdateNotes?.(media.id, notes);
     setIsEditingNotes(false);
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditImageUpload(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const handleGalleryImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -347,39 +358,13 @@ export function MediaDetailDialog({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Image</Label>
-              <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  id="edit-image-upload"
-                />
-                <label htmlFor="edit-image-upload" className="cursor-pointer block">
-                  {editImageUpload ? (
-                    <div>
-                      <img 
-                        src={editImageUpload} 
-                        alt="Preview" 
-                        className="max-h-32 mx-auto rounded mb-2"
-                      />
-                      <p className="text-sm text-muted-foreground">Click to change image</p>
-                    </div>
-                  ) : (
-                    <div>
-                      <img 
-                        src={media.imageUrl} 
-                        alt="Current" 
-                        className="max-h-32 mx-auto rounded mb-2"
-                      />
-                      <p className="text-sm text-muted-foreground">Click to change image</p>
-                    </div>
-                  )}
-                </label>
-              </div>
-            </div>
+            <CoverImageUpload
+              label="Image"
+              inputId="edit-image-upload"
+              value={editImageUpload}
+              existingUrl={media.imageUrl}
+              onChange={setEditImageUpload}
+            />
 
             <div className="space-y-2">
               <Label>Rating</Label>
@@ -560,7 +545,7 @@ export function MediaDetailDialog({
                       <div key={index} className="relative group">
                         <button
                           type="button"
-                          onClick={() => setPreviewGalleryImage(image)}
+                          onClick={() => setPreviewGalleryIndex(index)}
                           className="block w-24 h-24 rounded-lg overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <img
@@ -582,20 +567,57 @@ export function MediaDetailDialog({
                     ))}
                   </div>
                   <Dialog
-                    open={previewGalleryImage !== null}
-                    onOpenChange={(open) => !open && setPreviewGalleryImage(null)}
+                    open={previewGalleryIndex !== null}
+                    onOpenChange={(open) => !open && setPreviewGalleryIndex(null)}
                   >
                     <DialogContent
                       showCloseButton={false}
                       className="max-w-3xl p-2 sm:p-4 cursor-pointer"
-                      onClick={() => setPreviewGalleryImage(null)}
+                      onClick={() => setPreviewGalleryIndex(null)}
                     >
-                      {previewGalleryImage && (
-                        <img
-                          src={previewGalleryImage}
-                          alt="Gallery preview"
-                          className="w-full max-h-[80vh] object-contain rounded-md"
-                        />
+                      {previewGalleryIndex !== null && gallery[previewGalleryIndex] && (
+                        <div className="relative flex items-center justify-center">
+                          {gallery.length > 1 && (
+                            <button
+                              type="button"
+                              aria-label="Previous image"
+                              className="absolute left-1 sm:left-2 z-10 rounded-full bg-black/60 text-white p-2 hover:bg-black/80"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewGalleryIndex(
+                                  (previewGalleryIndex - 1 + gallery.length) % gallery.length,
+                                );
+                              }}
+                            >
+                              <ChevronLeft className="w-5 h-5" />
+                            </button>
+                          )}
+                          <img
+                            src={gallery[previewGalleryIndex]}
+                            alt={`Gallery ${previewGalleryIndex + 1}`}
+                            className="w-full max-h-[80vh] object-contain rounded-md"
+                          />
+                          {gallery.length > 1 && (
+                            <button
+                              type="button"
+                              aria-label="Next image"
+                              className="absolute right-1 sm:right-2 z-10 rounded-full bg-black/60 text-white p-2 hover:bg-black/80"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewGalleryIndex(
+                                  (previewGalleryIndex + 1) % gallery.length,
+                                );
+                              }}
+                            >
+                              <ChevronRight className="w-5 h-5" />
+                            </button>
+                          )}
+                          {gallery.length > 1 && (
+                            <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 text-white text-xs px-2 py-1">
+                              {previewGalleryIndex + 1} / {gallery.length}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </DialogContent>
                   </Dialog>

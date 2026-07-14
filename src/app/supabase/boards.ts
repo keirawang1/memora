@@ -150,7 +150,7 @@ export async function fetchBoards(mediaItems?: MediaItem[]): Promise<Board[]> {
           isSystem: true,
           coverImage: '',
           createdAt: new Date().toISOString().split('T')[0],
-          description: 'All media in your library',
+          description: '',
         },
         ...boards,
       ];
@@ -262,11 +262,6 @@ export async function updateBoard(
     throw new Error('You must be signed in to update a board');
   }
 
-  const allBoardId = await getAllBoardId(user.id);
-  if (allBoardId && boardId === allBoardId) {
-    throw new Error('The All board cannot be edited');
-  }
-
   const { data: existingBoard, error: existingError } = await supabase
     .from('boards')
     .select('is_system, name')
@@ -275,8 +270,48 @@ export async function updateBoard(
     .maybeSingle();
 
   if (existingError) throw existingError;
-  if (existingBoard?.is_system || existingBoard?.name === ALL_BOARD_NAME) {
-    throw new Error('The All board cannot be edited');
+
+  const isSystemAllBoard =
+    existingBoard?.is_system === true || existingBoard?.name === ALL_BOARD_NAME;
+
+  if (isSystemAllBoard) {
+    const hasDisallowedUpdates =
+      input.name !== undefined ||
+      input.description !== undefined ||
+      input.type !== undefined ||
+      input.isPublic !== undefined;
+
+    if (hasDisallowedUpdates) {
+      throw new Error('Only the cover image can be changed for the All board');
+    }
+
+    if (!input.coverImageDataUrl) {
+      throw new Error('Choose a cover image to save');
+    }
+
+    const { data: existing } = await supabase
+      .from('boards')
+      .select('cover_image')
+      .eq('board_id', boardId)
+      .eq('user_id', user.id)
+      .single();
+
+    const coverImage = await resolveCoverImageUrl(user.id, input.coverImageDataUrl);
+
+    if (existing?.cover_image && existing.cover_image !== coverImage) {
+      await deleteBoardCoverFromStorage(existing.cover_image);
+    }
+
+    const { data, error } = await supabase
+      .from('boards')
+      .update({ cover_image: coverImage })
+      .eq('board_id', boardId)
+      .eq('user_id', user.id)
+      .select(BOARD_SELECT)
+      .single();
+
+    if (error) throw error;
+    return mapDbBoardToBoard(data as DbBoard);
   }
 
   const payload: Record<string, unknown> = {};

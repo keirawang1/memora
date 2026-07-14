@@ -4,9 +4,9 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
-import { Upload } from 'lucide-react';
 import { Switch } from './ui/switch';
 import { MediaTypeSelectDropdown } from './MediaTypeSelectDropdown';
+import { CoverImageUpload } from './CoverImageUpload';
 import type { CreateBoardInput } from '../supabase/boards';
 import { BOARD_TYPE_MIXED, getBoardMediaTypeOptions } from '../data/mediaOptions';
 import { accentButtonStyle } from '../utils/accentColor';
@@ -35,17 +35,6 @@ export function AddBoardDialog({
     () => getBoardMediaTypeOptions(customMediaTypes),
     [customMediaTypes],
   );
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImageUpload(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -92,38 +81,12 @@ export function AddBoardDialog({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Board Cover Image</Label>
-            <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                id="board-image-upload"
-              />
-              <label htmlFor="board-image-upload" className="cursor-pointer block">
-                {imageUpload ? (
-                  <div>
-                    <img 
-                      src={imageUpload} 
-                      alt="Preview" 
-                      className="max-h-32 mx-auto rounded mb-2"
-                    />
-                    <p className="text-sm text-muted-foreground">Click to change image</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                    <div>
-                      <p className="text-sm">Click to upload an image</p>
-                      <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 5MB</p>
-                    </div>
-                  </div>
-                )}
-              </label>
-            </div>
-          </div>
+          <CoverImageUpload
+            label="Board Cover Image"
+            inputId="board-image-upload"
+            value={imageUpload}
+            onChange={setImageUpload}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="board-type">Media Type</Label>
