@@ -4,35 +4,67 @@ import { malGenresToMemora } from '../data/malGenres';
 const BASE = 'https://api.jikan.moe/v4';
 
 let lastRequestAt = 0;
-const MIN_GAP_MS = 400;
-const MAX_RETRIES = 3;
+const MIN_GAP_MS = 350;
+/** Fail fast — Jikan gateways often hang forever before returning 504. */
+const REQUEST_TIMEOUT_MS = 8000;
+const MAX_RETRIES = 2;
 
 async function jikanFetch<T>(path: string): Promise<T> {
+  let lastError: Error | null = null;
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const now = Date.now();
     const wait = MIN_GAP_MS - (now - lastRequestAt);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     lastRequestAt = Date.now();
 
-    const res = await fetch(`${BASE}${path}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-    if (res.ok) {
-      return res.json() as Promise<T>;
+    try {
+      const res = await fetch(`${BASE}${path}`, { signal: controller.signal });
+
+      if (res.ok) {
+        return (await res.json()) as T;
+      }
+
+      // 504 / 503: one quick retry then give up so fallbacks can run.
+      if ((res.status === 429 || res.status === 503 || res.status === 504) && attempt < MAX_RETRIES) {
+        const retryAfter = Number(res.headers.get('Retry-After'));
+        const delay =
+          Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter * 1000, 2500)
+            : res.status === 429
+              ? 1200 * (attempt + 1)
+              : 600;
+        lastError = new Error(`Jikan ${path}: ${res.status}`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      throw new Error(`Jikan ${path}: ${res.status}`);
+    } catch (err) {
+      const aborted =
+        err instanceof DOMException
+          ? err.name === 'AbortError'
+          : err instanceof Error && err.name === 'AbortError';
+      lastError = aborted
+        ? new Error(`Jikan ${path}: timeout`)
+        : err instanceof Error
+          ? err
+          : new Error(`Jikan ${path}: failed`);
+
+      if (aborted && attempt < MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+      throw lastError;
+    } finally {
+      clearTimeout(timer);
     }
-
-    if ((res.status === 429 || res.status === 503 || res.status === 504) && attempt < MAX_RETRIES) {
-      const retryAfter = Number(res.headers.get('Retry-After'));
-      const delay = Number.isFinite(retryAfter) && retryAfter > 0
-        ? retryAfter * 1000
-        : 1500 * (attempt + 1);
-      await new Promise((r) => setTimeout(r, delay));
-      continue;
-    }
-
-    throw new Error(`Jikan ${path}: ${res.status}`);
   }
 
-  throw new Error(`Jikan ${path}: failed`);
+  throw lastError ?? new Error(`Jikan ${path}: failed`);
 }
 
 interface JikanAnime {
@@ -134,7 +166,7 @@ async function jikanFetchMangaRecs(path: string): Promise<DiscoveryItem[]> {
 }
 
 export async function jikanSeasonNow(limit = 15): Promise<DiscoveryItem[]> {
-  return jikanFetchAnimeList('/seasons/now', limit);
+  return jikanFetchAnimeList(`/seasons/now?limit=${Math.min(limit, 25)}`, limit);
 }
 
 export async function jikanTopAnime(limit = 12): Promise<DiscoveryItem[]> {
@@ -149,15 +181,17 @@ export async function jikanTopPublishingManga(limit = 20): Promise<DiscoveryItem
   return jikanFetchMangaList(`/top/manga?filter=publishing&limit=${limit}`);
 }
 
-/** Recent/popular manga — recommendations first (reliable when list APIs fail). */
+/** Prefer list endpoints; use recommendation seeds only to fill gaps. */
 export async function jikanRecentManga(limit = 25): Promise<DiscoveryItem[]> {
-  const recPool = await jikanMangaFromRecommendationSeeds(limit);
-  const listPool = await jikanTopPublishingManga(Math.min(limit, 15));
-  const merged = dedupeMangaItems([...listPool, ...recPool]);
-  if (merged.length >= 5) return merged.slice(0, limit);
+  const [listPool, popular] = await Promise.all([
+    jikanTopPublishingManga(Math.min(limit, 25)),
+    jikanTopManga(Math.min(limit, 25)),
+  ]);
+  const merged = dedupeMangaItems([...listPool, ...popular]);
+  if (merged.length >= Math.min(5, limit)) return merged.slice(0, limit);
 
-  const popular = await jikanTopManga(limit);
-  return dedupeMangaItems([...merged, ...popular]).slice(0, limit);
+  const recPool = await jikanMangaFromRecommendationSeeds(limit);
+  return dedupeMangaItems([...merged, ...recPool]).slice(0, limit);
 }
 
 function dedupeMangaItems(items: DiscoveryItem[]): DiscoveryItem[] {
@@ -222,8 +256,8 @@ export async function jikanMangaRecommendations(malId: number): Promise<Discover
   return jikanFetchMangaRecs(`/manga/${malId}/recommendations`);
 }
 
-/** Popular manga ids — their /recommendations endpoints work when list APIs are down. */
-const MANGA_TRENDING_SEED_IDS = [44347, 13, 656, 2, 85199];
+/** Well-known titles — used only when list APIs return too little. */
+const MANGA_TRENDING_SEED_IDS = [13, 2, 656, 85199, 44347];
 
 export async function jikanMangaFromRecommendationSeeds(limit = 25): Promise<DiscoveryItem[]> {
   const pool: DiscoveryItem[] = [];

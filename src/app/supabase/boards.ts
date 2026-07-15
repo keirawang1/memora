@@ -120,11 +120,23 @@ function buildBoardList(rows: DbBoard[], allMediaIds: string[]): Board[] {
 export async function fetchLibrary(userId: string): Promise<{
   media: MediaItem[];
   boards: Board[];
+  mediaError?: Error;
 }> {
-  const [media, rows] = await Promise.all([
+  const [mediaResult, boardResult] = await Promise.allSettled([
     fetchMedia(userId),
     fetchBoardRows(userId),
   ]);
+
+  const media =
+    mediaResult.status === 'fulfilled' ? mediaResult.value : [];
+  const rows =
+    boardResult.status === 'fulfilled' ? boardResult.value : [];
+
+  if (boardResult.status === 'rejected') {
+    throw boardResult.reason instanceof Error
+      ? boardResult.reason
+      : new Error('Failed to load boards');
+  }
 
   let boards = buildBoardList(rows, media.map((m) => m.id));
 
@@ -149,7 +161,16 @@ export async function fetchLibrary(userId: string): Promise<{
     }
   }
 
-  return { media, boards };
+  return {
+    media,
+    boards,
+    mediaError:
+      mediaResult.status === 'rejected'
+        ? mediaResult.reason instanceof Error
+          ? mediaResult.reason
+          : new Error('Failed to load media')
+        : undefined,
+  };
 }
 
 export async function fetchBoards(

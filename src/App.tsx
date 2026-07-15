@@ -33,6 +33,7 @@ import { createBoard, fetchLibrary, updateBoard, deleteBoard, updateBoardMediaOr
 import {
   createMedia,
   deleteMedia,
+  fetchMediaById,
   updateMedia,
   type CreateMediaInput,
 } from './app/supabase/media';
@@ -304,9 +305,12 @@ function App() {
     ]);
 
     try {
-      const { media, boards } = await fetchLibrary(user.id);
+      const { media, boards, mediaError } = await fetchLibrary(user.id);
       setMediaItems(media);
       setBoards(boards);
+      if (mediaError) {
+        toast.error(mediaError.message || 'Failed to load media');
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load library';
       toast.error(message);
@@ -558,9 +562,20 @@ function App() {
     navigate(APP_ROUTES.library);
   };
 
-  const handleMediaClick = (media: MediaItem) => {
+  const handleMediaClick = async (media: MediaItem) => {
     setSelectedMedia(media);
     setDetailDialogOpen(true);
+    try {
+      const full = await fetchMediaById(media.id);
+      if (full) {
+        setSelectedMedia(full);
+        setMediaItems((prev) =>
+          prev.map((item) => (item.id === media.id ? { ...item, gallery: full.gallery } : item)),
+        );
+      }
+    } catch {
+      // Detail still opens without gallery
+    }
   };
 
   const handleUpdateNotes = async (mediaId: string, notes: string) => {
@@ -598,10 +613,20 @@ function App() {
         boardIds,
       });
       const nextMedia = mediaItems.map((item) =>
-        item.id === mediaId ? updated : item,
+        item.id === mediaId
+          ? {
+              ...item,
+              ...updated,
+              gallery: updated.gallery ?? item.gallery,
+            }
+          : item,
       );
       setMediaItems(nextMedia);
-      setSelectedMedia((prev) => (prev?.id === mediaId ? updated : prev));
+      setSelectedMedia((prev) =>
+        prev?.id === mediaId
+          ? { ...prev, ...updated, gallery: updated.gallery ?? prev.gallery }
+          : prev,
+      );
       if (boardIds !== undefined) {
         setBoards((prev) =>
           syncBoardMembershipsLocally(prev, nextMedia, mediaId, {

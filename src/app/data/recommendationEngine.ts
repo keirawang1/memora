@@ -14,6 +14,7 @@ import {
   jikanRecentManga,
   jikanMangaFromRecommendationSeeds,
   jikanTopPublishingManga,
+  jikanTopManga,
   jikanMangaByGenres,
   DEFAULT_MANGA_REC_SEED_ID,
   DEFAULT_ANIME_REC_SEED_ID,
@@ -385,9 +386,13 @@ export async function fetchTrendingMangaRow(
   exclude: DiscoveryItem[] = [],
 ): Promise<DiscoveryItem[]> {
   const taken = new Set(exclude.map((i) => normalizeTitle(i.title)));
-  let pool = await jikanMangaFromRecommendationSeeds(25);
+  // Prefer list endpoints — /manga/{id}/recommendations often 504s.
+  let pool = await jikanTopPublishingManga(25);
   if (pool.length < ROW_COUNT) {
-    pool = dedupeDiscoveryItems([...pool, ...(await jikanTopPublishingManga(25))]);
+    pool = dedupeDiscoveryItems([...pool, ...(await jikanTopManga(25))]);
+  }
+  if (pool.length < ROW_COUNT) {
+    pool = dedupeDiscoveryItems([...pool, ...(await jikanMangaFromRecommendationSeeds(25))]);
   }
   return takeUniqueItems(pool, ROW_COUNT, taken, items).slice(0, ROW_COUNT);
 }
@@ -446,10 +451,17 @@ export async function fetchTrendingSection(
   items: MediaItem[],
   exclude: DiscoveryItem[] = [],
 ): Promise<DiscoverySectionRows> {
-  // Fetch manga first while API rate limit is fresh (list endpoints often 504).
-  const manga = await fetchTrendingMangaRow(items, exclude);
-  const primary = await fetchPrimaryTrendingRow(items, [...exclude, ...manga]);
-  return { primary, manga };
+  const [manga, primary] = await Promise.all([
+    fetchTrendingMangaRow(items, exclude),
+    fetchPrimaryTrendingRow(items, exclude),
+  ]);
+  const primaryDeduped = takeUniqueItems(
+    primary,
+    ROW_COUNT,
+    new Set(manga.map((i) => normalizeTitle(i.title))),
+    items,
+  );
+  return { primary: primaryDeduped, manga };
 }
 
 export async function fetchRecommendedSection(

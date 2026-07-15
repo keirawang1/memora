@@ -232,7 +232,7 @@ export async function fetchMediaForPublicBoard(boardId: string): Promise<MediaIt
 
   const { data, error } = await supabase
     .from('media')
-    .select('*')
+    .select(MEDIA_LIST_SELECT)
     .eq('user_id', (board as DbBoard).user_id as string)
     .in('media_id', mediaIds)
     .order('created_at', { ascending: true });
@@ -244,8 +244,11 @@ export async function fetchMediaForPublicBoard(boardId: string): Promise<MediaIt
   return items.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 }
 
+/** Library list omits gallery — some rows store multi-MB base64 and time out PostgREST. */
 const MEDIA_LIST_SELECT =
-  'media_id, title, type, status, rating, cover, board_ids, created_at, updated_at, date_started, date_completed, notes, link, genres, gallery';
+  'media_id, title, type, status, rating, cover, board_ids, created_at, updated_at, date_started, date_completed, notes, link, genres';
+
+const MEDIA_DETAIL_SELECT = `${MEDIA_LIST_SELECT}, gallery`;
 
 export async function fetchMedia(userId?: string): Promise<MediaItem[]> {
   const resolvedUserId =
@@ -260,7 +263,27 @@ export async function fetchMedia(userId?: string): Promise<MediaItem[]> {
     .order('created_at', { ascending: true });
 
   if (error) throw error;
-  return (data as DbMedia[]).map(mapDbMediaToMedia);
+  return (data as DbMedia[]).map((row) =>
+    mapDbMediaToMedia({ ...row, gallery: row.gallery ?? [] }),
+  );
+}
+
+/** Lazy-load gallery (and optionally refresh one item) when opening media detail. */
+export async function fetchMediaById(mediaId: string): Promise<MediaItem | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
+  if (!userId) return null;
+
+  const { data, error } = await supabase
+    .from('media')
+    .select(MEDIA_DETAIL_SELECT)
+    .eq('media_id', mediaId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+  return mapDbMediaToMedia(data as DbMedia);
 }
 
 export async function createMedia(input: CreateMediaInput): Promise<MediaItem> {
@@ -295,12 +318,15 @@ export async function createMedia(input: CreateMediaInput): Promise<MediaItem> {
   const { data: row, error: insertError } = await supabase
     .from('media')
     .insert(insertPayload)
-    .select('*')
+    .select(MEDIA_LIST_SELECT)
     .single();
 
   if (insertError) throw insertError;
 
-  const media = mapDbMediaToMedia(row as DbMedia);
+  const media = mapDbMediaToMedia({
+    ...(row as DbMedia),
+    gallery: input.gallery ?? [],
+  });
 
   try {
     await appendMediaIdToBoards(user.id, media.id, userBoardIds);
@@ -388,12 +414,16 @@ export async function updateMedia(
     .update(payload)
     .eq('media_id', mediaId)
     .eq('user_id', user.id)
-    .select()
+    .select(MEDIA_LIST_SELECT)
     .single();
 
   if (error) throw error;
 
-  return mapDbMediaToMedia(data as DbMedia);
+  const mapped = mapDbMediaToMedia(data as DbMedia);
+  if (input.gallery !== undefined) {
+    mapped.gallery = input.gallery;
+  }
+  return mapped;
 }
 
 export async function deleteMedia(mediaId: string): Promise<void> {
