@@ -19,5 +19,11 @@ export function getPasswordResetRedirectUrl(): string {
 }
 
 export function clearAuthParamsFromUrl(): void {
-  window.history.replaceState(null, '', window.location.pathname);
+  const url = new URL(window.location.href);
+  url.hash = '';
+  url.searchParams.delete('code');
+  url.searchParams.delete('token_hash');
+  url.searchParams.delete('type');
+  url.searchParams.delete('next');
+  window.history.replaceState(null, '', `${url.pathname}${url.search}`);
 }

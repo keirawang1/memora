@@ -10,6 +10,7 @@ import { ensureUserProfile } from '../supabase/users';
 import { toast } from 'sonner';
 import logoImage from '../../assets/logo.png';
 import { getPasswordResetRedirectUrl } from '../utils/authRecovery';
+import { getEmailConfirmRedirectUrl } from '../utils/authCallback';
 import {
   formatAuthEmailError,
   getAuthEmailCooldownSeconds,
@@ -134,7 +135,8 @@ export function AuthPage({
   };
 
   const handleSignIn = async () => {
-    if (!email || !password) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !password) {
       toast.error('Please enter email and password');
       return;
     }
@@ -142,16 +144,30 @@ export function AuthPage({
     setIsLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: trimmedEmail,
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        const code = (error as { code?: string }).code?.toLowerCase() ?? '';
+        const msg = (error.message ?? '').toLowerCase();
+        if (code === 'email_not_confirmed' || msg.includes('not confirmed')) {
+          toast.error('Confirm your email first, then sign in.');
+          return;
+        }
+        if (code === 'invalid_credentials' || msg.includes('invalid login')) {
+          toast.error(
+            'Invalid email or password. If you just signed up, use the password from your first signup — or reset it.',
+          );
+          return;
+        }
+        throw error;
+      }
 
       if (data.session?.user) {
         await completeAuth(
           data.session.user.id,
-          data.session.user.email ?? email,
+          data.session.user.email ?? trimmedEmail,
           data.session.access_token,
         );
       }
@@ -175,7 +191,8 @@ export function AuthPage({
   };
 
   const handleSignUp = async () => {
-    if (!email || !password) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !password) {
       toast.error('Please enter email and password');
       return;
     }
@@ -186,10 +203,14 @@ export function AuthPage({
     }
 
     setIsLoading(true);
+    setEmail(trimmedEmail);
     try {
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: trimmedEmail,
         password,
+        options: {
+          emailRedirectTo: getEmailConfirmRedirectUrl(),
+        },
       });
 
       if (error) {
@@ -204,7 +225,7 @@ export function AuthPage({
       // for duplicate emails. Verify by attempting sign-in instead of trusting identities alone.
       if (data.user && (data.user.identities?.length ?? 0) === 0) {
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
+          email: trimmedEmail,
           password,
         });
 
@@ -215,20 +236,23 @@ export function AuthPage({
         }
 
         const signInMsg = (signInError?.message ?? '').toLowerCase();
-        if (signInMsg.includes('not confirmed')) {
+        const signInCode = signInError?.code?.toLowerCase() ?? '';
+        if (signInCode === 'email_not_confirmed' || signInMsg.includes('not confirmed')) {
           toast.success('Check your email to confirm your account, then sign in.');
           goToAuthMode('signin');
-          setPassword('');
           return;
         }
 
         if (
           signInError &&
-          (signInMsg.includes('invalid') || signInMsg.includes('credentials'))
+          (signInCode === 'invalid_credentials' ||
+            signInMsg.includes('invalid') ||
+            signInMsg.includes('credentials'))
         ) {
           toast.error(
-            'This email is still registered. Sign in with your previous password, or use Forgot password to set a new one.',
+            'This email is already registered. Sign in with your original password, or use Forgot password.',
           );
+          goToAuthMode('signin');
           return;
         }
 
@@ -238,15 +262,15 @@ export function AuthPage({
       if (data.session?.user) {
         await createUserProfileAfterSignup(data.session);
         toast.success('Account created successfully!');
-      } else {
-        toast.success('Check your email to confirm your account, then sign in.');
+      } else if (data.user) {
+        toast.success('Check your email to confirm your account. You will be signed in after confirming.');
         goToAuthMode('signin');
-        setPassword('');
+      } else {
+        toast.error('Could not create account. Please try again in a minute.');
       }
     } catch (error: unknown) {
       console.error('Error signing up:', error);
-      const message = error instanceof Error ? error.message : 'Failed to create account';
-      toast.error(message);
+      toast.error(formatAuthEmailError(error));
     } finally {
       setIsLoading(false);
     }

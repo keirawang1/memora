@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './app/components/ui/tabs';
 import { LibraryPage } from './app/components/LibraryPage';
@@ -20,6 +20,7 @@ import {
   getBoardMediaItems,
   isAllBoard,
   sortBoardsWithAllFirst,
+  syncBoardMembershipsLocally,
 } from './app/data/allBoard';
 import { mergeCustomOrder } from './app/data/sortOrder';
 import type { MediaItem, Friend, Board, User } from './app/types/media';
@@ -28,11 +29,10 @@ import { toast, Toaster } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './app/components/ui/dropdown-menu';
 import logoImage from './assets/logo.png';
 import { supabase } from './app/supabase/client';
-import { createBoard, fetchBoards, updateBoard, deleteBoard, updateBoardMediaOrder } from './app/supabase/boards';
+import { createBoard, fetchLibrary, updateBoard, deleteBoard, updateBoardMediaOrder } from './app/supabase/boards';
 import {
   createMedia,
   deleteMedia,
-  fetchMedia,
   updateMedia,
   type CreateMediaInput,
 } from './app/supabase/media';
@@ -89,6 +89,11 @@ import {
   clearAuthParamsFromUrl,
   isPasswordRecoveryUrl,
 } from './app/utils/authRecovery';
+import {
+  hasAuthCallbackParams,
+  isSignupConfirmCallback,
+  settleAuthCallbackSession,
+} from './app/utils/authCallback';
 
 function App() {
   const location = useLocation();
@@ -122,6 +127,8 @@ function App() {
   const [preferredGenres, setPreferredGenres] = useState<string[]>([]);
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
   const [showOnboardingTour, setShowOnboardingTour] = useState(false);
+  const authedUserIdRef = useRef<string | null>(null);
+  const libraryLoadingRef = useRef(false);
 
   const boardIdFromUrl = getBoardIdFromPath(location.pathname);
   const viewingUserId = getUserIdFromPath(location.pathname);
@@ -134,6 +141,8 @@ function App() {
   }, [boardIdFromUrl, boards]);
 
   const resetAuthState = () => {
+    authedUserIdRef.current = null;
+    libraryLoadingRef.current = false;
     setIsAuthenticated(false);
     setLibraryLoaded(false);
     setBoards(getDefaultBoards());
@@ -169,6 +178,8 @@ function App() {
   useEffect(() => {
     if (authChecking || passwordRecoveryPending) return;
     if (isAuthenticated) return;
+    // Don't strip Supabase confirm/recovery tokens via client navigation.
+    if (hasAuthCallbackParams()) return;
     if (location.pathname === APP_ROUTES.resetPassword) {
       navigate(APP_ROUTES.signIn, { replace: true });
       return;
@@ -246,65 +257,65 @@ function App() {
   };
 
   const loadLibraryForUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (libraryLoadingRef.current) return;
+    libraryLoadingRef.current = true;
 
-    try {
-      const theme = await getUserThemePreferences(user.id);
-      setThemeSettings(theme);
-      setAccentColor(applyAppTheme(theme));
-    } catch {
-      // Keep current theme if load fails
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) {
+      libraryLoadingRef.current = false;
+      return;
     }
 
-    let fetchedMedia: MediaItem[] = [];
+    const secondaryLoads = Promise.all([
+      getUserThemePreferences(user.id)
+        .then((theme) => {
+          setThemeSettings(theme);
+          setAccentColor(applyAppTheme(theme));
+        })
+        .catch(() => {
+          // Keep current theme if load fails
+        }),
+      loadUserTagPreferences(user.id).catch(() => {
+        setCustomGenres([]);
+        setCustomMediaTypes([]);
+        setShowAllBoard(true);
+      }),
+      getUserOnboardingState(user.id)
+        .then((onboarding) => {
+          setOnboardingCompleted(onboarding.completed);
+          setPreferredGenres(onboarding.preferredGenres);
+          if (!onboarding.completed && onboarding.preferredGenres.length > 0) {
+            setShowOnboardingTour(true);
+          }
+        })
+        .catch(() => {
+          setOnboardingCompleted(true);
+          setPreferredGenres([]);
+        })
+        .finally(() => setOnboardingLoaded(true)),
+      fetchFriends(user.id)
+        .then(setFriends)
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : 'Failed to load friends';
+          toast.error(message);
+          setFriends([]);
+        }),
+    ]);
+
     try {
-      fetchedMedia = await fetchMedia();
-      setMediaItems(fetchedMedia);
+      const { media, boards } = await fetchLibrary(user.id);
+      setMediaItems(media);
+      setBoards(boards);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load media';
+      const message = error instanceof Error ? error.message : 'Failed to load library';
       toast.error(message);
-    }
-
-    try {
-      const fetchedBoards = await fetchBoards(fetchedMedia);
-      setBoards(fetchedBoards);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load boards';
-      toast.error(message);
-    }
-
-    try {
-      await loadUserTagPreferences(user.id);
-    } catch {
-      setCustomGenres([]);
-      setCustomMediaTypes([]);
-      setShowAllBoard(true);
-    }
-
-    try {
-      const onboarding = await getUserOnboardingState(user.id);
-      setOnboardingCompleted(onboarding.completed);
-      setPreferredGenres(onboarding.preferredGenres);
-      if (!onboarding.completed && onboarding.preferredGenres.length > 0) {
-        setShowOnboardingTour(true);
-      }
-    } catch {
-      setOnboardingCompleted(true);
-      setPreferredGenres([]);
-    } finally {
-      setOnboardingLoaded(true);
-    }
-
-    try {
-      setFriends(await fetchFriends(user.id));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load friends';
-      toast.error(message);
-      setFriends([]);
     } finally {
       setLibraryLoaded(true);
+      libraryLoadingRef.current = false;
     }
+
+    await secondaryLoads;
   };
 
   const handleAuthSuccess = (
@@ -317,6 +328,8 @@ function App() {
     bio?: string,
     isNewSignup?: boolean,
   ) => {
+    const alreadyAuthed = authedUserIdRef.current === userId;
+    authedUserIdRef.current = userId;
     setUser({
       id: userId,
       username,
@@ -332,10 +345,12 @@ function App() {
       setOnboardingLoaded(false);
       setShowOnboardingTour(false);
     }
-    void loadLibraryForUser();
+    if (!alreadyAuthed || !libraryLoaded) {
+      void loadLibraryForUser();
+    }
     if (isNewSignup) {
       navigate(APP_ROUTES.onboarding, { replace: true });
-    } else if (!isKnownAppPath(location.pathname)) {
+    } else if (!alreadyAuthed && !isKnownAppPath(location.pathname)) {
       navigate(APP_ROUTES.library, { replace: true });
     }
   };
@@ -380,6 +395,47 @@ function App() {
 
   useEffect(() => {
     let mounted = true;
+    let applyingSession = false;
+
+    const applySession = async (
+      session: {
+        user: { id: string; email?: string | null };
+        access_token: string;
+      },
+      isNewSignup = false,
+    ) => {
+      if (!mounted || applyingSession) return;
+      if (authedUserIdRef.current === session.user.id) return;
+      applyingSession = true;
+      try {
+        const profile =
+          (await getUserProfile(session.user.id)) ??
+          (await ensureUserProfile(
+            session.user.id,
+            session.user.email ?? '',
+          ));
+
+        handleAuthSuccess(
+          session.user.id,
+          profile.username,
+          profile.displayName,
+          profile.email,
+          session.access_token,
+          profile.avatar,
+          profile.bio,
+          isNewSignup,
+        );
+      } catch (error) {
+        if (mounted) {
+          setIsAuthenticated(false);
+          const message =
+            error instanceof Error ? error.message : 'Failed to load profile';
+          toast.error(message);
+        }
+      } finally {
+        applyingSession = false;
+      }
+    };
 
     const restoreSession = async () => {
       if (isPasswordRecoveryUrl()) {
@@ -392,29 +448,13 @@ function App() {
         return;
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (session?.user && mounted) {
-        try {
-          const profile =
-            (await getUserProfile(session.user.id)) ??
-            (await ensureUserProfile(
-              session.user.id,
-              session.user.email ?? '',
-            ));
-
-          handleAuthSuccess(
-            session.user.id,
-            profile.username,
-            profile.displayName,
-            profile.email,
-            session.access_token,
-            profile.avatar,
-            profile.bio,
-          );
-        } catch {
-          if (mounted) setIsAuthenticated(false);
+      try {
+        const { session, isSignupConfirm } = await settleAuthCallbackSession();
+        if (session?.user && mounted) {
+          await applySession(session, isSignupConfirm);
         }
+      } catch (error) {
+        console.error('Error restoring auth session:', error);
       }
 
       if (mounted) setAuthChecking(false);
@@ -423,7 +463,7 @@ function App() {
     void restoreSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, _session) => {
+      async (event, session) => {
         if (!mounted) return;
 
         if (event === 'PASSWORD_RECOVERY') {
@@ -435,6 +475,12 @@ function App() {
           setPasswordRecoveryPending(false);
           resetAuthState();
           navigate(APP_ROUTES.signIn, { replace: true });
+          return;
+        }
+
+        // Email confirmation can deliver the session via SIGNED_IN after mount.
+        if (event === 'SIGNED_IN' && session?.user && !isPasswordRecoveryUrl()) {
+          await applySession(session, isSignupConfirmCallback());
         }
       },
     );
@@ -467,11 +513,11 @@ function App() {
       const created = await createMedia(input);
       const nextMedia = [...mediaItems, created];
       setMediaItems(nextMedia);
-      try {
-        setBoards(await fetchBoards(nextMedia));
-      } catch {
-        // Keep new media in state if board refresh fails
-      }
+      setBoards((prev) =>
+        syncBoardMembershipsLocally(prev, nextMedia, created.id, {
+          boardIds: created.boardIds ?? [],
+        }),
+      );
 
       toast.success('Media added to your library!');
     } catch (error) {
@@ -495,11 +541,6 @@ function App() {
         } catch {
           // Board list still works if custom order save fails
         }
-      }
-      try {
-        setBoards(await fetchBoards(mediaItems));
-      } catch {
-        // Keep optimistic board if refresh fails
       }
       toast.success('Board created successfully!');
     } catch (error) {
@@ -561,7 +602,13 @@ function App() {
       );
       setMediaItems(nextMedia);
       setSelectedMedia((prev) => (prev?.id === mediaId ? updated : prev));
-      setBoards(await fetchBoards(nextMedia));
+      if (boardIds !== undefined) {
+        setBoards((prev) =>
+          syncBoardMembershipsLocally(prev, nextMedia, mediaId, {
+            boardIds: updated.boardIds ?? boardIds,
+          }),
+        );
+      }
 
       toast.success('Media updated successfully!');
     } catch (error) {
@@ -575,7 +622,9 @@ function App() {
       await deleteMedia(mediaId);
       const nextMedia = mediaItems.filter((item) => item.id !== mediaId);
       setMediaItems(nextMedia);
-      setBoards(await fetchBoards(nextMedia));
+      setBoards((prev) =>
+        syncBoardMembershipsLocally(prev, nextMedia, mediaId, { remove: true }),
+      );
       setSelectedMedia(null);
       setDetailDialogOpen(false);
       toast.success('Media removed from your library');

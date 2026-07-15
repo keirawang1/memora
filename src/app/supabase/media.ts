@@ -85,6 +85,22 @@ function mapDbMediaToMedia(row: DbMedia): MediaItem {
   };
 }
 
+async function fetchBoardsMedia(
+  userId: string,
+  boardIds: string[],
+): Promise<DbBoard[]> {
+  if (boardIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('boards')
+    .select('board_id, media')
+    .eq('user_id', userId)
+    .in('board_id', boardIds);
+
+  if (error) throw error;
+  return (data as DbBoard[]) ?? [];
+}
+
 async function appendMediaIdToBoards(
   userId: string,
   mediaId: string,
@@ -92,27 +108,21 @@ async function appendMediaIdToBoards(
 ): Promise<void> {
   if (boardIds.length === 0) return;
 
-  for (const boardId of boardIds) {
-    const { data: board, error: fetchError } = await supabase
-      .from('boards')
-      .select('media')
-      .eq('board_id', boardId)
-      .eq('user_id', userId)
-      .single();
+  const boards = await fetchBoardsMedia(userId, boardIds);
+  await Promise.all(
+    boards.map(async (board) => {
+      const mediaIds = board.media ?? [];
+      if (mediaIds.includes(mediaId)) return;
 
-    if (fetchError || !board) continue;
+      const { error } = await supabase
+        .from('boards')
+        .update({ media: [...mediaIds, mediaId] })
+        .eq('board_id', board.board_id)
+        .eq('user_id', userId);
 
-    const mediaIds = (board as DbBoard).media ?? [];
-    if (mediaIds.includes(mediaId)) continue;
-
-    const { error } = await supabase
-      .from('boards')
-      .update({ media: [...mediaIds, mediaId] })
-      .eq('board_id', boardId)
-      .eq('user_id', userId);
-
-    if (error) throw error;
-  }
+      if (error) throw error;
+    }),
+  );
 }
 
 async function removeMediaIdFromBoards(
@@ -122,27 +132,21 @@ async function removeMediaIdFromBoards(
 ): Promise<void> {
   if (boardIds.length === 0) return;
 
-  for (const boardId of boardIds) {
-    const { data: board, error: fetchError } = await supabase
-      .from('boards')
-      .select('media')
-      .eq('board_id', boardId)
-      .eq('user_id', userId)
-      .single();
+  const boards = await fetchBoardsMedia(userId, boardIds);
+  await Promise.all(
+    boards.map(async (board) => {
+      const mediaIds = board.media ?? [];
+      if (!mediaIds.includes(mediaId)) return;
 
-    if (fetchError || !board) continue;
+      const { error } = await supabase
+        .from('boards')
+        .update({ media: mediaIds.filter((id) => id !== mediaId) })
+        .eq('board_id', board.board_id)
+        .eq('user_id', userId);
 
-    const mediaIds = (board as DbBoard).media ?? [];
-    if (!mediaIds.includes(mediaId)) continue;
-
-    const { error } = await supabase
-      .from('boards')
-      .update({ media: mediaIds.filter((id) => id !== mediaId) })
-      .eq('board_id', boardId)
-      .eq('user_id', userId);
-
-    if (error) throw error;
-  }
+      if (error) throw error;
+    }),
+  );
 }
 
 async function removeMediaIdFromAllBoards(
@@ -156,11 +160,23 @@ async function removeMediaIdFromAllBoards(
 
   if (error) throw error;
 
-  const boardIds = (boards as DbBoard[] | null)
-    ?.filter((b) => (b.media ?? []).includes(mediaId))
-    .map((b) => b.board_id) ?? [];
+  const affected = ((boards as DbBoard[] | null) ?? []).filter((b) =>
+    (b.media ?? []).includes(mediaId),
+  );
 
-  await removeMediaIdFromBoards(userId, mediaId, boardIds);
+  await Promise.all(
+    affected.map(async (board) => {
+      const { error: updateError } = await supabase
+        .from('boards')
+        .update({
+          media: (board.media ?? []).filter((id) => id !== mediaId),
+        })
+        .eq('board_id', board.board_id)
+        .eq('user_id', userId);
+
+      if (updateError) throw updateError;
+    }),
+  );
 }
 
 export async function unlinkBoardFromAllMedia(boardId: string): Promise<void> {
@@ -174,18 +190,25 @@ export async function unlinkBoardFromAllMedia(boardId: string): Promise<void> {
 
   if (error) throw error;
 
+  const updates = [];
   for (const row of (rows as DbMedia[] | null) ?? []) {
     const boardIds = row.board_ids ?? [];
     if (!boardIds.includes(boardId)) continue;
 
-    const { error: updateError } = await supabase
-      .from('media')
-      .update({ board_ids: boardIds.filter((id) => id !== boardId) })
-      .eq('media_id', row.media_id)
-      .eq('user_id', user.id);
-
-    if (updateError) throw updateError;
+    updates.push(
+      supabase
+        .from('media')
+        .update({ board_ids: boardIds.filter((id) => id !== boardId) })
+        .eq('media_id', row.media_id)
+        .eq('user_id', user.id),
+    );
   }
+
+  if (updates.length === 0) return;
+
+  const results = await Promise.all(updates);
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw failed.error;
 }
 
 export async function fetchMediaForPublicBoard(boardId: string): Promise<MediaItem[]> {
@@ -221,14 +244,19 @@ export async function fetchMediaForPublicBoard(boardId: string): Promise<MediaIt
   return items.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 }
 
-export async function fetchMedia(): Promise<MediaItem[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+const MEDIA_LIST_SELECT =
+  'media_id, title, type, status, rating, cover, board_ids, created_at, updated_at, date_started, date_completed, notes, link, genres, gallery';
+
+export async function fetchMedia(userId?: string): Promise<MediaItem[]> {
+  const resolvedUserId =
+    userId ??
+    (await supabase.auth.getSession()).data.session?.user?.id;
+  if (!resolvedUserId) return [];
 
   const { data, error } = await supabase
     .from('media')
-    .select('*')
-    .eq('user_id', user.id)
+    .select(MEDIA_LIST_SELECT)
+    .eq('user_id', resolvedUserId)
     .order('created_at', { ascending: true });
 
   if (error) throw error;
@@ -264,24 +292,13 @@ export async function createMedia(input: CreateMediaInput): Promise<MediaItem> {
     user_id: user.id,
   };
 
-  const { data: inserted, error: insertError } = await supabase
+  const { data: row, error: insertError } = await supabase
     .from('media')
     .insert(insertPayload)
-    .select('media_id')
+    .select('*')
     .single();
 
   if (insertError) throw insertError;
-
-  const mediaId = inserted.media_id as string;
-
-  const { data: row, error: fetchError } = await supabase
-    .from('media')
-    .select('*')
-    .eq('media_id', mediaId)
-    .eq('user_id', user.id)
-    .single();
-
-  if (fetchError) throw fetchError;
 
   const media = mapDbMediaToMedia(row as DbMedia);
 
@@ -376,7 +393,6 @@ export async function updateMedia(
 
   if (error) throw error;
 
-  await syncAllBoardMedia(user.id);
   return mapDbMediaToMedia(data as DbMedia);
 }
 

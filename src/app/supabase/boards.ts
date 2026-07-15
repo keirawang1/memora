@@ -1,7 +1,7 @@
 import type { Board, MediaItem } from '../types/media';
 import { ALL_BOARD_NAME, isAllBoard, sortBoardsWithAllFirst } from '../data/allBoard';
-import { ensureAllBoard, getAllBoardId, syncAllBoardMedia } from './allBoardSync';
-import { unlinkBoardFromAllMedia } from './media';
+import { ensureAllBoard, getAllBoardId } from './allBoardSync';
+import { fetchMedia, unlinkBoardFromAllMedia } from './media';
 import { supabase } from './client';
 import { deleteBoardCoverFromStorage, resolveCoverImageUrl } from './storage';
 
@@ -110,38 +110,75 @@ function applyAllBoardMediaIds(boards: Board[], allMediaIds: string[]): Board[] 
   );
 }
 
-export async function fetchBoards(mediaItems?: MediaItem[]): Promise<Board[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  try {
-    await ensureAllBoard(user.id);
-  } catch {
-    // Continue — we still try to load boards below
-  }
-
-  try {
-    await syncAllBoardMedia(user.id);
-  } catch {
-    // Sync can fail without blocking the board list
-  }
-
-  const rows = await fetchBoardRows(user.id);
+function buildBoardList(rows: DbBoard[], allMediaIds: string[]): Board[] {
   let boards = rows.map(mapDbBoardToBoard);
+  boards = applyAllBoardMediaIds(boards, allMediaIds);
+  return sortBoardsWithAllFirst(boards);
+}
+
+/** Parallel library load — one round-trip each for media + boards. */
+export async function fetchLibrary(userId: string): Promise<{
+  media: MediaItem[];
+  boards: Board[];
+}> {
+  const [media, rows] = await Promise.all([
+    fetchMedia(userId),
+    fetchBoardRows(userId),
+  ]);
+
+  let boards = buildBoardList(rows, media.map((m) => m.id));
+
+  if (!boards.some(isAllBoard)) {
+    try {
+      const allBoardId = await ensureAllBoard(userId);
+      boards = sortBoardsWithAllFirst([
+        {
+          id: allBoardId,
+          name: ALL_BOARD_NAME,
+          mediaIds: media.map((m) => m.id),
+          isPublic: false,
+          isSystem: true,
+          coverImage: '',
+          createdAt: new Date().toISOString().split('T')[0],
+          description: '',
+        },
+        ...boards.filter((b) => !isAllBoard(b)),
+      ]);
+    } catch {
+      // No All board available
+    }
+  }
+
+  return { media, boards };
+}
+
+export async function fetchBoards(
+  mediaItems?: MediaItem[],
+  userId?: string,
+): Promise<Board[]> {
+  const resolvedUserId =
+    userId ??
+    (await supabase.auth.getSession()).data.session?.user?.id;
+  if (!resolvedUserId) return [];
+
+  const rows = await fetchBoardRows(resolvedUserId);
 
   const allMediaIds =
     mediaItems?.map((m) => m.id) ??
     (
-      await supabase.from('media').select('media_id').eq('user_id', user.id)
+      await supabase
+        .from('media')
+        .select('media_id')
+        .eq('user_id', resolvedUserId)
     ).data?.map((row) => row.media_id as string) ??
     [];
 
-  boards = applyAllBoardMediaIds(boards, allMediaIds);
+  let boards = buildBoardList(rows, allMediaIds);
 
   if (!boards.some(isAllBoard)) {
     try {
-      const allBoardId = await ensureAllBoard(user.id);
-      boards = [
+      const allBoardId = await ensureAllBoard(resolvedUserId);
+      boards = sortBoardsWithAllFirst([
         {
           id: allBoardId,
           name: ALL_BOARD_NAME,
@@ -152,14 +189,14 @@ export async function fetchBoards(mediaItems?: MediaItem[]): Promise<Board[]> {
           createdAt: new Date().toISOString().split('T')[0],
           description: '',
         },
-        ...boards,
-      ];
+        ...boards.filter((b) => !isAllBoard(b)),
+      ]);
     } catch {
       // No All board available
     }
   }
 
-  return sortBoardsWithAllFirst(boards);
+  return boards;
 }
 
 export async function fetchPublicBoardsForUser(userId: string): Promise<Board[]> {
