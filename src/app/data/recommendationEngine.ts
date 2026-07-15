@@ -3,6 +3,13 @@ import type { DiscoveryItem, DiscoverySeed, DiscoverySectionRows } from '../type
 import { normalizeWatchStatus } from './analytics';
 import { memoraGenresToMal } from './malGenres';
 import { readLookupCache, writeLookupCache } from './discoveryCache';
+import { getMangaFallbackPool } from './mangaFallback';
+import {
+  formatPrintSectionLabel,
+  isPrintMediaType,
+  preferredPrintTypesToJikan,
+  resolvePreferredPrintTypes,
+} from './printMediaTypes';
 import {
   jikanRecommendations,
   jikanMangaRecommendations,
@@ -11,11 +18,10 @@ import {
   jikanSearchManga,
   jikanSeasonNow,
   jikanTopAiringAnime,
-  jikanRecentManga,
-  jikanMangaFromRecommendationSeeds,
   jikanTopPublishingManga,
   jikanTopManga,
   jikanMangaByGenres,
+  jikanPopularPrintMix,
   DEFAULT_MANGA_REC_SEED_ID,
   DEFAULT_ANIME_REC_SEED_ID,
   parseMalAnimeIdFromLink,
@@ -117,8 +123,7 @@ function isAnimeType(type: string): boolean {
 }
 
 function isComicType(type: string): boolean {
-  const t = type.trim().toLowerCase();
-  return t === 'comic' || t === 'manga';
+  return isPrintMediaType(type);
 }
 
 export async function resolveExternalId(
@@ -232,7 +237,7 @@ export function computeTypeWeights(items: MediaItem[]): Record<string, number> {
     if (status === 'not-started' || status === 'dropped') continue;
     const t = item.type.trim().toLowerCase();
     if (t === 'anime') weights.anime += 1;
-    else if (t === 'comic' || t === 'manga') weights.comic += 1;
+    else if (isPrintMediaType(t)) weights.comic += 1;
   }
   if (weights.anime + weights.comic === 0) return { anime: 1, comic: 1 };
   return weights;
@@ -267,17 +272,8 @@ function takeUniqueItems(
 
 async function defaultRecommendationMalId(
   mediaType: 'anime' | 'comic',
-): Promise<number | null> {
-  if (mediaType === 'anime') {
-    const [season, airing] = await Promise.all([
-      jikanSeasonNow(1),
-      jikanTopAiringAnime(1),
-    ]);
-    return season[0]?.externalId ?? airing[0]?.externalId ?? DEFAULT_ANIME_REC_SEED_ID;
-  }
-
-  const publishing = await jikanRecentManga(1);
-  return publishing[0]?.externalId ?? DEFAULT_MANGA_REC_SEED_ID;
+): Promise<number> {
+  return mediaType === 'anime' ? DEFAULT_ANIME_REC_SEED_ID : DEFAULT_MANGA_REC_SEED_ID;
 }
 
 async function fetchV4Recommendations(
@@ -289,28 +285,49 @@ async function fetchV4Recommendations(
     : jikanRecommendations(malId);
 }
 
+/**
+ * Resolve MAL id using local link/cache only — no Jikan search (saves rate limit).
+ * Falls back to a stable seed id.
+ */
+async function resolveSeedMalId(
+  seedItem: MediaItem | null,
+  lookupCache: Map<string, number | null>,
+  mediaType: 'anime' | 'comic',
+): Promise<number> {
+  if (seedItem) {
+    if (mediaType === 'comic') {
+      const fromLink = parseMalMangaIdFromLink(seedItem.link);
+      if (fromLink) return fromLink;
+    } else {
+      const fromLink = parseMalAnimeIdFromLink(seedItem.link);
+      if (fromLink) return fromLink;
+    }
+
+    const cacheKey = `${seedItem.type}:${normalizeTitle(seedItem.title)}`;
+    const persisted = readLookupCache(cacheKey);
+    if (persisted != null) {
+      lookupCache.set(cacheKey, persisted);
+      return persisted;
+    }
+    if (lookupCache.has(cacheKey)) {
+      const cached = lookupCache.get(cacheKey);
+      if (cached != null) return cached;
+    }
+  }
+
+  return defaultRecommendationMalId(mediaType);
+}
+
 async function fetchRecommendationsForSeed(
   seedItem: MediaItem | null,
   lookupCache: Map<string, number | null>,
   mediaType: 'anime' | 'comic',
 ): Promise<DiscoveryItem[]> {
-  let malId: number | null = null;
-
-  if (seedItem) {
-    const resolved = await resolveExternalId(seedItem, lookupCache);
-    if (resolved) {
-      malId = resolved.externalId;
-    }
-  }
-
-  if (malId == null) {
-    malId = await defaultRecommendationMalId(mediaType);
-  }
-
-  if (malId == null) return [];
+  const malId = await resolveSeedMalId(seedItem, lookupCache, mediaType);
   return fetchV4Recommendations(malId, mediaType);
 }
 
+/** At most one extra API call to fill a short row. */
 async function finalizeRecommendedRow(
   candidates: DiscoveryItem[],
   items: MediaItem[],
@@ -322,48 +339,26 @@ async function finalizeRecommendedRow(
   const filtered =
     mediaType === 'anime'
       ? candidates.filter((i) => i.type === 'anime')
-      : candidates.filter((i) => i.type === 'comic');
+      : candidates.filter((i) => isPrintMediaType(i.type));
 
   let row = takeUniqueItems(filtered, ROW_COUNT, taken, items);
+  if (row.length >= ROW_COUNT) return row.slice(0, ROW_COUNT);
 
-  if (row.length < ROW_COUNT && malGenreIds.length > 0) {
-    const genrePool =
-      mediaType === 'anime'
-        ? await jikanAnimeByGenres(malGenreIds, 25)
-        : await jikanMangaByGenres(malGenreIds, 25);
-    row = takeUniqueItems(
-      dedupeDiscoveryItems([...row, ...genrePool]),
-      ROW_COUNT,
-      taken,
-      items,
-    );
-  }
+  const filler =
+    mediaType === 'anime'
+      ? malGenreIds.length > 0
+        ? await jikanAnimeByGenres(malGenreIds, 15)
+        : await jikanTopAiringAnime(15)
+      : malGenreIds.length > 0
+        ? await jikanMangaByGenres(malGenreIds, 15)
+        : await jikanTopManga(15);
 
-  if (row.length < ROW_COUNT) {
-    const directPool =
-      mediaType === 'comic'
-        ? await jikanRecentManga(25)
-        : await jikanTopAiringAnime(25);
-    row = takeUniqueItems(
-      dedupeDiscoveryItems([...row, ...directPool]),
-      ROW_COUNT,
-      taken,
-      items,
-    );
-  }
-
-  if (row.length < ROW_COUNT) {
-    const fallbackMalId = await defaultRecommendationMalId(mediaType);
-    if (fallbackMalId != null) {
-      const fallbackRecs = await fetchV4Recommendations(fallbackMalId, mediaType);
-      row = takeUniqueItems(
-        dedupeDiscoveryItems([...row, ...fallbackRecs]),
-        ROW_COUNT,
-        taken,
-        items,
-      );
-    }
-  }
+  row = takeUniqueItems(
+    dedupeDiscoveryItems([...row, ...filler]),
+    ROW_COUNT,
+    taken,
+    items,
+  );
 
   return row.slice(0, ROW_COUNT);
 }
@@ -373,26 +368,35 @@ export async function fetchPrimaryTrendingRow(
   exclude: DiscoveryItem[] = [],
 ): Promise<DiscoveryItem[]> {
   const taken = new Set(exclude.map((i) => normalizeTitle(i.title)));
-  const [seasonPool, airingPool] = await Promise.all([
-    jikanSeasonNow(20),
-    jikanTopAiringAnime(20),
-  ]);
-  const pool = dedupeDiscoveryItems([...seasonPool, ...airingPool]);
+  const seasonPool = await jikanSeasonNow(20);
+  const pool =
+    seasonPool.length >= ROW_COUNT
+      ? seasonPool
+      : dedupeDiscoveryItems([...seasonPool, ...(await jikanTopAiringAnime(20))]);
   return takeUniqueItems(pool, ROW_COUNT, taken, items).slice(0, ROW_COUNT);
 }
 
 export async function fetchTrendingMangaRow(
   items: MediaItem[],
   exclude: DiscoveryItem[] = [],
+  preferredPrintTypes: string[] = [],
 ): Promise<DiscoveryItem[]> {
   const taken = new Set(exclude.map((i) => normalizeTitle(i.title)));
-  // Prefer list endpoints — /manga/{id}/recommendations often 504s.
-  let pool = await jikanTopPublishingManga(25);
+  const printTypes =
+    preferredPrintTypes.length > 0
+      ? preferredPrintTypes
+      : resolvePreferredPrintTypes(items);
+  const jikanTypes = preferredPrintTypesToJikan(printTypes);
+
+  let pool = await jikanPopularPrintMix(jikanTypes, 25);
   if (pool.length < ROW_COUNT) {
-    pool = dedupeDiscoveryItems([...pool, ...(await jikanTopManga(25))]);
+    pool = dedupeDiscoveryItems([...pool, ...(await jikanTopPublishingManga(25))]);
   }
   if (pool.length < ROW_COUNT) {
-    pool = dedupeDiscoveryItems([...pool, ...(await jikanMangaFromRecommendationSeeds(25))]);
+    pool = dedupeDiscoveryItems([
+      ...pool,
+      ...getMangaFallbackPool(25, printTypes),
+    ]);
   }
   return takeUniqueItems(pool, ROW_COUNT, taken, items).slice(0, ROW_COUNT);
 }
@@ -413,10 +417,42 @@ export async function fetchRecommendedMangaRow(
   lookupCache: Map<string, number | null>,
   exclude: DiscoveryItem[] = [],
   malGenreIds: number[] = [],
+  preferredPrintTypes: string[] = [],
 ): Promise<DiscoveryItem[]> {
-  const seedItem = pickSeedItemForMediaType(items, 'comic');
-  const candidates = await fetchRecommendationsForSeed(seedItem, lookupCache, 'comic');
-  return finalizeRecommendedRow(candidates, items, exclude, 'comic', malGenreIds);
+  const taken = new Set(exclude.map((i) => normalizeTitle(i.title)));
+  const printTypes =
+    preferredPrintTypes.length > 0
+      ? preferredPrintTypes
+      : resolvePreferredPrintTypes(items);
+  const jikanTypes = preferredPrintTypesToJikan(printTypes);
+
+  let pool = await jikanPopularPrintMix(jikanTypes, 25);
+
+  if (pool.length < ROW_COUNT && malGenreIds.length > 0) {
+    pool = dedupeDiscoveryItems([
+      ...pool,
+      ...(await jikanMangaByGenres(malGenreIds, 25)),
+    ]);
+  }
+
+  if (pool.length < ROW_COUNT) {
+    pool = dedupeDiscoveryItems([...pool, ...(await jikanTopPublishingManga(25))]);
+  }
+
+  if (pool.length < ROW_COUNT) {
+    const seedItem = pickSeedItemForMediaType(items, 'comic');
+    const seedRecs = await fetchRecommendationsForSeed(seedItem, lookupCache, 'comic');
+    pool = dedupeDiscoveryItems([...pool, ...seedRecs]);
+  }
+
+  if (pool.length < ROW_COUNT) {
+    pool = dedupeDiscoveryItems([
+      ...pool,
+      ...getMangaFallbackPool(25, printTypes),
+    ]);
+  }
+
+  return takeUniqueItems(pool, ROW_COUNT, taken, items).slice(0, ROW_COUNT);
 }
 
 export async function fetchRecommendedPrimary(
@@ -433,8 +469,15 @@ export async function fetchRecommendedPrimary(
   let seed: DiscoverySeed | null = null;
 
   if (animeSeed) {
-    const resolved = await resolveExternalId(animeSeed, lookupCache);
-    seed = buildDiscoverySeed(animeSeed, resolved);
+    const malId = await resolveSeedMalId(
+      animeSeed,
+      lookupCache,
+      isComicType(animeSeed.type) ? 'comic' : 'anime',
+    );
+    seed = buildDiscoverySeed(animeSeed, {
+      externalId: malId,
+      mediaType: isComicType(animeSeed.type) ? 'comic' : 'anime',
+    });
   }
 
   const primary = await fetchRecommendedAnimeRow(
@@ -450,18 +493,16 @@ export async function fetchRecommendedPrimary(
 export async function fetchTrendingSection(
   items: MediaItem[],
   exclude: DiscoveryItem[] = [],
-): Promise<DiscoverySectionRows> {
-  const [manga, primary] = await Promise.all([
-    fetchTrendingMangaRow(items, exclude),
-    fetchPrimaryTrendingRow(items, exclude),
-  ]);
-  const primaryDeduped = takeUniqueItems(
+  customMediaTypes: string[] = [],
+): Promise<DiscoverySectionRows & { printLabel: string }> {
+  const printTypes = resolvePreferredPrintTypes(items, customMediaTypes);
+  const manga = await fetchTrendingMangaRow(items, exclude, printTypes);
+  const primary = await fetchPrimaryTrendingRow(items, [...exclude, ...manga]);
+  return {
     primary,
-    ROW_COUNT,
-    new Set(manga.map((i) => normalizeTitle(i.title))),
-    items,
-  );
-  return { primary: primaryDeduped, manga };
+    manga,
+    printLabel: formatPrintSectionLabel(printTypes),
+  };
 }
 
 export async function fetchRecommendedSection(
@@ -469,10 +510,18 @@ export async function fetchRecommendedSection(
   lookupCache: Map<string, number | null>,
   exclude: DiscoveryItem[] = [],
   preferredGenres: string[] = [],
-): Promise<DiscoverySectionRows & { seed: DiscoverySeed | null; personalized: boolean }> {
+  customMediaTypes: string[] = [],
+): Promise<
+  DiscoverySectionRows & {
+    seed: DiscoverySeed | null;
+    personalized: boolean;
+    printLabel: string;
+  }
+> {
   const genreNames = resolveRecommendationGenres(items, preferredGenres);
   const malIds = memoraGenresToMal(genreNames);
   const personalized = isPersonalizedRecommendations(items, preferredGenres);
+  const printTypes = resolvePreferredPrintTypes(items, customMediaTypes);
 
   const { primary, seed } = await fetchRecommendedPrimary(
     items,
@@ -485,7 +534,14 @@ export async function fetchRecommendedSection(
     lookupCache,
     [...exclude, ...primary],
     malIds,
+    printTypes,
   );
 
-  return { primary, manga, seed, personalized };
+  return {
+    primary,
+    manga,
+    seed,
+    personalized,
+    printLabel: formatPrintSectionLabel(printTypes),
+  };
 }

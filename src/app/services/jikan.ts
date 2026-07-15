@@ -1,70 +1,107 @@
 import type { DiscoveryItem } from '../types/discovery';
 import { malGenresToMemora } from '../data/malGenres';
+import { jikanMangaTypeToMemora } from '../data/printMediaTypes';
 
 const BASE = 'https://api.jikan.moe/v4';
 
+/** Jikan: ~3 req/s advertised; stay well under to avoid 429/504 cascades. */
+const MIN_GAP_MS = 1100;
+const REQUEST_TIMEOUT_MS = 10000;
+const CACHE_TTL_MS = 30 * 60 * 1000;
+const COOLDOWN_429_MS = 8000;
+
+type QueueJob = {
+  path: string;
+  resolve: (value: unknown) => void;
+  reject: (reason?: unknown) => void;
+};
+
+const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
+const queue: QueueJob[] = [];
+let pumping = false;
 let lastRequestAt = 0;
-const MIN_GAP_MS = 350;
-/** Fail fast — Jikan gateways often hang forever before returning 504. */
-const REQUEST_TIMEOUT_MS = 8000;
-const MAX_RETRIES = 2;
+let cooldownUntil = 0;
 
-async function jikanFetch<T>(path: string): Promise<T> {
-  let lastError: Error | null = null;
+function readResponseCache<T>(path: string): T | null {
+  const hit = responseCache.get(path);
+  if (!hit) return null;
+  if (Date.now() > hit.expiresAt) {
+    responseCache.delete(path);
+    return null;
+  }
+  return hit.data as T;
+}
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+function writeResponseCache(path: string, data: unknown): void {
+  responseCache.set(path, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+async function pumpQueue(): Promise<void> {
+  if (pumping) return;
+  pumping = true;
+
+  while (queue.length > 0) {
+    const job = queue.shift()!;
+    const cached = readResponseCache(job.path);
+    if (cached != null) {
+      job.resolve(cached);
+      continue;
+    }
+
     const now = Date.now();
-    const wait = MIN_GAP_MS - (now - lastRequestAt);
+    const waitForCooldown = Math.max(0, cooldownUntil - now);
+    const waitForGap = Math.max(0, MIN_GAP_MS - (now - lastRequestAt));
+    const wait = Math.max(waitForCooldown, waitForGap);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    lastRequestAt = Date.now();
 
+    lastRequestAt = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const res = await fetch(`${BASE}${path}`, { signal: controller.signal });
+      const res = await fetch(`${BASE}${job.path}`, { signal: controller.signal });
 
-      if (res.ok) {
-        return (await res.json()) as T;
-      }
-
-      // 504 / 503: one quick retry then give up so fallbacks can run.
-      if ((res.status === 429 || res.status === 503 || res.status === 504) && attempt < MAX_RETRIES) {
-        const retryAfter = Number(res.headers.get('Retry-After'));
-        const delay =
-          Number.isFinite(retryAfter) && retryAfter > 0
-            ? Math.min(retryAfter * 1000, 2500)
-            : res.status === 429
-              ? 1200 * (attempt + 1)
-              : 600;
-        lastError = new Error(`Jikan ${path}: ${res.status}`);
-        await new Promise((r) => setTimeout(r, delay));
+      if (res.status === 429) {
+        cooldownUntil = Date.now() + COOLDOWN_429_MS;
+        job.reject(new Error(`Jikan ${job.path}: 429`));
         continue;
       }
 
-      throw new Error(`Jikan ${path}: ${res.status}`);
+      if (res.status === 503 || res.status === 504) {
+        job.reject(new Error(`Jikan ${job.path}: ${res.status}`));
+        continue;
+      }
+
+      if (!res.ok) {
+        job.reject(new Error(`Jikan ${job.path}: ${res.status}`));
+        continue;
+      }
+
+      const json = await res.json();
+      writeResponseCache(job.path, json);
+      job.resolve(json);
     } catch (err) {
-      const aborted =
-        err instanceof DOMException
-          ? err.name === 'AbortError'
-          : err instanceof Error && err.name === 'AbortError';
-      lastError = aborted
-        ? new Error(`Jikan ${path}: timeout`)
-        : err instanceof Error
-          ? err
-          : new Error(`Jikan ${path}: failed`);
-
-      if (aborted && attempt < MAX_RETRIES) {
-        await new Promise((r) => setTimeout(r, 400));
-        continue;
-      }
-      throw lastError;
+      job.reject(err);
     } finally {
       clearTimeout(timer);
     }
   }
 
-  throw lastError ?? new Error(`Jikan ${path}: failed`);
+  pumping = false;
+}
+
+function jikanFetch<T>(path: string): Promise<T> {
+  const cached = readResponseCache<T>(path);
+  if (cached != null) return Promise.resolve(cached);
+
+  return new Promise<T>((resolve, reject) => {
+    queue.push({
+      path,
+      resolve: (value) => resolve(value as T),
+      reject,
+    });
+    void pumpQueue();
+  });
 }
 
 interface JikanAnime {
@@ -110,7 +147,8 @@ function mapJikanAnime(anime: JikanAnime): DiscoveryItem {
 
 function mapJikanManga(manga: JikanAnime): DiscoveryItem {
   const genreIds = (manga.genres ?? []).map((g) => g.mal_id);
-  const formatLabel = (manga.type ?? 'MANGA').toUpperCase();
+  const memoraType = jikanMangaTypeToMemora(manga.type);
+  const formatLabel = (manga.type ?? 'Manga').replace(/_/g, ' ').toUpperCase();
   return {
     id: `mal-manga-${manga.mal_id}`,
     externalId: manga.mal_id,
@@ -120,10 +158,10 @@ function mapJikanManga(manga: JikanAnime): DiscoveryItem {
       manga.images?.jpg?.large_image_url ??
       manga.images?.jpg?.image_url ??
       '',
-    type: 'comic',
+    type: memoraType,
     genres: malGenresToMemora(genreIds),
     link: `https://myanimelist.net/manga/${manga.mal_id}`,
-    formatLabel: formatLabel === 'MANGA' ? 'MANGA' : formatLabel,
+    formatLabel,
   };
 }
 
@@ -181,31 +219,61 @@ export async function jikanTopPublishingManga(limit = 20): Promise<DiscoveryItem
   return jikanFetchMangaList(`/top/manga?filter=publishing&limit=${limit}`);
 }
 
-/** Prefer list endpoints; use recommendation seeds only to fill gaps. */
-export async function jikanRecentManga(limit = 25): Promise<DiscoveryItem[]> {
-  const [listPool, popular] = await Promise.all([
-    jikanTopPublishingManga(Math.min(limit, 25)),
-    jikanTopManga(Math.min(limit, 25)),
-  ]);
-  const merged = dedupeMangaItems([...listPool, ...popular]);
-  if (merged.length >= Math.min(5, limit)) return merged.slice(0, limit);
-
-  const recPool = await jikanMangaFromRecommendationSeeds(limit);
-  return dedupeMangaItems([...merged, ...recPool]).slice(0, limit);
+export async function jikanTopManga(limit = 15): Promise<DiscoveryItem[]> {
+  return jikanFetchMangaList(`/top/manga?filter=bypopularity&limit=${limit}`);
 }
 
-function dedupeMangaItems(items: DiscoveryItem[]): DiscoveryItem[] {
+export async function jikanTopMangaOfType(
+  type: string,
+  limit = 15,
+): Promise<DiscoveryItem[]> {
+  return jikanFetchMangaList(
+    `/top/manga?type=${encodeURIComponent(type)}&filter=bypopularity&limit=${limit}`,
+    limit,
+  );
+}
+
+/** Popular titles across preferred print subtypes (manga / manhwa / manhua / LN). */
+export async function jikanPopularPrintMix(
+  jikanTypes: string[],
+  limit = 25,
+): Promise<DiscoveryItem[]> {
+  const types = jikanTypes.length > 0 ? jikanTypes : ['manga'];
+  const perType = Math.max(8, Math.ceil(limit / Math.min(types.length, 2)));
+  const pool: DiscoveryItem[] = [];
+
+  for (const type of types.slice(0, 2)) {
+    let rows = await jikanTopMangaOfType(type, perType);
+    if (rows.length === 0) {
+      rows = await jikanFetchMangaList(
+        `/manga?type=${encodeURIComponent(type)}&order_by=popularity&sort=desc&limit=${perType}`,
+        perType,
+      );
+    }
+    pool.push(...rows);
+    if (pool.length >= limit) break;
+  }
+
+  if (pool.length === 0) return jikanTopManga(limit);
+
   const seen = new Set<number>();
   const result: DiscoveryItem[] = [];
-  for (const item of items) {
+  for (const item of pool) {
     if (seen.has(item.externalId)) continue;
     seen.add(item.externalId);
     result.push(item);
+    if (result.length >= limit) break;
   }
   return result;
 }
 
-/** Stable fallback when list endpoints fail — recommendations still work for this id. */
+/** Single list call — no seeded rec fan-out. */
+export async function jikanRecentManga(limit = 25): Promise<DiscoveryItem[]> {
+  const publishing = await jikanTopPublishingManga(limit);
+  if (publishing.length > 0) return publishing;
+  return jikanTopManga(limit);
+}
+
 export const DEFAULT_MANGA_REC_SEED_ID = 13;
 export const DEFAULT_ANIME_REC_SEED_ID = 5114;
 
@@ -213,15 +281,22 @@ export async function jikanRecommendations(malId: number): Promise<DiscoveryItem
   return jikanFetchAnimeRecs(`/anime/${malId}/recommendations`);
 }
 
+export async function jikanMangaRecommendations(malId: number): Promise<DiscoveryItem[]> {
+  return jikanFetchMangaRecs(`/manga/${malId}/recommendations`);
+}
+
 export async function jikanSearchAnime(title: string): Promise<DiscoveryItem | null> {
   const q = encodeURIComponent(title.trim());
   if (!q) return null;
-  try {
-    const results = await jikanFetchAnimeList(`/anime?q=${q}&limit=1`, 1);
-    return results[0] ?? null;
-  } catch {
-    return null;
-  }
+  const results = await jikanFetchAnimeList(`/anime?q=${q}&limit=1`, 1);
+  return results[0] ?? null;
+}
+
+export async function jikanSearchManga(title: string): Promise<DiscoveryItem | null> {
+  const q = encodeURIComponent(title.trim());
+  if (!q) return null;
+  const results = await jikanFetchMangaList(`/manga?q=${q}&limit=1`, 1);
+  return results[0] ?? null;
 }
 
 export async function jikanAnimeByGenres(
@@ -236,10 +311,6 @@ export async function jikanAnimeByGenres(
   );
 }
 
-export async function jikanTopManga(limit = 15): Promise<DiscoveryItem[]> {
-  return jikanFetchMangaList(`/top/manga?filter=bypopularity&limit=${limit}`);
-}
-
 export async function jikanMangaByGenres(
   genreIds: number[],
   limit = 25,
@@ -252,33 +323,11 @@ export async function jikanMangaByGenres(
   );
 }
 
-export async function jikanMangaRecommendations(malId: number): Promise<DiscoveryItem[]> {
-  return jikanFetchMangaRecs(`/manga/${malId}/recommendations`);
-}
-
-/** Well-known titles — used only when list APIs return too little. */
-const MANGA_TRENDING_SEED_IDS = [13, 2, 656, 85199, 44347];
-
+/** Kept for callers — one seed only, no multi-id blast. */
 export async function jikanMangaFromRecommendationSeeds(limit = 25): Promise<DiscoveryItem[]> {
-  const pool: DiscoveryItem[] = [];
-  for (const malId of MANGA_TRENDING_SEED_IDS) {
-    const recs = await jikanMangaRecommendations(malId);
-    if (recs.length === 0) continue;
-    pool.push(...recs);
-    if (dedupeMangaItems(pool).length >= limit) break;
-  }
-  return dedupeMangaItems(pool).slice(0, limit);
-}
-
-export async function jikanSearchManga(title: string): Promise<DiscoveryItem | null> {
-  const q = encodeURIComponent(title.trim());
-  if (!q) return null;
-  try {
-    const results = await jikanFetchMangaList(`/manga?q=${q}&limit=1`, 1);
-    return results[0] ?? null;
-  } catch {
-    return null;
-  }
+  return jikanMangaRecommendations(DEFAULT_MANGA_REC_SEED_ID).then((rows) =>
+    rows.slice(0, limit),
+  );
 }
 
 interface JikanDetailData {
@@ -292,7 +341,7 @@ interface JikanDetailResponse {
 
 export async function jikanFetchSynopsis(item: DiscoveryItem): Promise<string> {
   const path =
-    item.type === 'comic' ? `/manga/${item.externalId}` : `/anime/${item.externalId}`;
+    item.type === 'anime' ? `/anime/${item.externalId}` : `/manga/${item.externalId}`;
   try {
     const json = await jikanFetch<JikanDetailResponse>(path);
     const text = json.data.synopsis?.trim() || json.data.background?.trim();

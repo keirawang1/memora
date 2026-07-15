@@ -1207,6 +1207,7 @@ function App() {
               userId={user.id}
               boards={boards}
               preferredGenres={preferredGenres}
+              customMediaTypes={customMediaTypes}
               onAddMedia={handleAddMedia}
             />
           </TabsContent>

@@ -13,18 +13,19 @@ interface RecommendationsPageProps {
   userId: string;
   boards: Board[];
   preferredGenres?: string[];
+  customMediaTypes?: string[];
   onAddMedia?: (
     media: Omit<MediaItem, 'id' | 'dateAdded'> & { id?: string },
     boardIds: string[],
   ) => void | Promise<void>;
 }
 
-function DiscoveryGridSkeleton() {
+function DiscoveryGridSkeleton({ printLabel = 'Manga' }: { printLabel?: string }) {
   return (
     <div className="flex flex-col gap-5">
-      {['Anime', 'Manga'].map((label) => (
+      {['Anime', printLabel].map((label) => (
         <div key={label}>
-          <div className="h-3 w-16 bg-muted rounded mb-2 animate-pulse" />
+          <div className="h-3 w-24 bg-muted rounded mb-2 animate-pulse" />
           <div className="grid grid-cols-[repeat(auto-fill,minmax(12.5rem,1fr))] gap-3">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="animate-pulse flex flex-col">
@@ -44,12 +45,14 @@ function DiscoveryGridSkeleton() {
 function DiscoveryScrollGrid({
   primary,
   manga,
+  printLabel,
   boards,
   addedTitles,
   onAdd,
 }: {
   primary: DiscoveryItem[];
   manga: DiscoveryItem[];
+  printLabel: string;
   boards: Board[];
   addedTitles: Set<string>;
   onAdd: (item: DiscoveryItem, boardIds: string[]) => void | Promise<void>;
@@ -89,7 +92,7 @@ function DiscoveryScrollGrid({
     <div className="max-h-[560px] overflow-y-auto pr-1">
       <div className="flex flex-col gap-5">
         {renderRow(primary, 'Anime')}
-        {renderRow(manga, 'Manga')}
+        {renderRow(manga, printLabel)}
       </div>
     </div>
   );
@@ -100,6 +103,7 @@ export function RecommendationsPage({
   userId,
   boards,
   preferredGenres = [],
+  customMediaTypes = [],
   onAddMedia,
 }: RecommendationsPageProps) {
   const {
@@ -108,10 +112,11 @@ export function RecommendationsPage({
     trending,
     trendingManga,
     personalized,
+    printLabel,
     recommendedLoading,
     trendingLoading,
     refreshRecommended,
-  } = useDiscoveryFeed(mediaItems, userId, preferredGenres);
+  } = useDiscoveryFeed(mediaItems, userId, preferredGenres, customMediaTypes);
   const [addedTitles, setAddedTitles] = useState<Set<string>>(() => {
     return new Set(mediaItems.map((m) => normalizeTitle(m.title)));
   });
@@ -165,11 +170,12 @@ export function RecommendationsPage({
         </CardHeader>
         <CardContent>
           {recommendedLoading ? (
-            <DiscoveryGridSkeleton />
+            <DiscoveryGridSkeleton printLabel={printLabel} />
           ) : (
             <DiscoveryScrollGrid
               primary={recommended}
               manga={recommendedManga}
+              printLabel={printLabel}
               boards={boards}
               addedTitles={addedTitles}
               onAdd={handleAdd}
@@ -189,11 +195,12 @@ export function RecommendationsPage({
         </CardHeader>
         <CardContent>
           {trendingLoading ? (
-            <DiscoveryGridSkeleton />
+            <DiscoveryGridSkeleton printLabel={printLabel} />
           ) : (
             <DiscoveryScrollGrid
               primary={trending}
               manga={trendingManga}
+              printLabel={printLabel}
               boards={boards}
               addedTitles={addedTitles}
               onAdd={handleAdd}
