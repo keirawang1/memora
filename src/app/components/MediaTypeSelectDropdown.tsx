@@ -19,6 +19,7 @@ export function MediaTypeSelectDropdown({
   id,
 }: MediaTypeSelectDropdownProps) {
   const [open, setOpen] = useState(false);
+  const useTwoColumns = options.length >= 8;
 
   const select = (type: string) => {
     onChange(type);
@@ -38,8 +39,16 @@ export function MediaTypeSelectDropdown({
           <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-96 p-2" align="start">
-        <div className="grid grid-cols-3 gap-0.5 max-h-56 overflow-y-auto overscroll-contain">
+      <PopoverContent
+        className="p-2 w-[var(--radix-popover-trigger-width)]"
+        align="start"
+      >
+        <div
+          className={cn(
+            'gap-0.5 max-h-56 overflow-y-auto overscroll-contain',
+            useTwoColumns ? 'grid grid-cols-2' : 'flex flex-col',
+          )}
+        >
           {options.map((type) => {
             const isSelected = value === type;
             return (

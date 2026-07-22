@@ -315,3 +315,13 @@ export async function createPostComment(
     author: publicUserToAuthor(profile),
   };
 }
+
+export async function deletePostComment(commentId: string): Promise<void> {
+  const { error } = await supabase
+    .from('post_comments')
+    .delete()
+    .eq('comment_id', commentId);
+
+  if (error) throw error;
+}
+

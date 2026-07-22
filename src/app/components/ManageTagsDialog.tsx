@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Pencil, Plus, Trash2, Check, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ManageTagsDialogProps {
   open: boolean;
@@ -13,6 +14,9 @@ interface ManageTagsDialogProps {
   tags: string[];
   onSave: (tags: string[]) => Promise<void>;
   addPlaceholder?: string;
+  /** Tags that cannot be deleted because they are in use */
+  lockedTags?: string[];
+  lockedReason?: string;
 }
 
 export function ManageTagsDialog({
@@ -23,12 +27,16 @@ export function ManageTagsDialog({
   tags,
   onSave,
   addPlaceholder = 'New tag name',
+  lockedTags = [],
+  lockedReason = 'This option is used by a board or media item and cannot be deleted.',
 }: ManageTagsDialogProps) {
   const [localTags, setLocalTags] = useState<string[]>(tags);
   const [newTag, setNewTag] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const lockedSet = new Set(lockedTags.map((t) => t.toLowerCase()));
 
   useEffect(() => {
     if (open) {
@@ -60,6 +68,11 @@ export function ManageTagsDialog({
   };
 
   const handleDelete = async (index: number) => {
+    const tag = localTags[index];
+    if (lockedSet.has(tag.toLowerCase())) {
+      toast.error(lockedReason);
+      return;
+    }
     const next = localTags.filter((_, i) => i !== index);
     await persist(next);
     if (editingIndex === index) {
@@ -103,45 +116,49 @@ export function ManageTagsDialog({
               No custom tags yet. Add one below.
             </p>
           ) : (
-            localTags.map((tag, index) => (
-              <div key={`${tag}-${index}`} className="flex items-center gap-2">
-                {editingIndex === index ? (
-                  <>
-                    <Input
-                      value={editingValue}
-                      onChange={(e) => setEditingValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void confirmEdit();
-                        if (e.key === 'Escape') cancelEdit();
-                      }}
-                      autoFocus
-                    />
-                    <Button size="icon" variant="ghost" onClick={() => void confirmEdit()} disabled={saving}>
-                      <Check className="w-4 h-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" onClick={cancelEdit}>
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex-1 text-sm py-2 px-3 rounded-md bg-muted">{tag}</span>
-                    <Button size="icon" variant="accentGhost" onClick={() => startEdit(index)} disabled={saving}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="text-red-600 hover:text-red-700"
-                      onClick={() => void handleDelete(index)}
-                      disabled={saving}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </>
-                )}
-              </div>
-            ))
+            localTags.map((tag, index) => {
+              const isLocked = lockedSet.has(tag.toLowerCase());
+              return (
+                <div key={`${tag}-${index}`} className="flex items-center gap-2">
+                  {editingIndex === index ? (
+                    <>
+                      <Input
+                        value={editingValue}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void confirmEdit();
+                          if (e.key === 'Escape') cancelEdit();
+                        }}
+                        autoFocus
+                      />
+                      <Button size="icon" variant="ghost" onClick={() => void confirmEdit()} disabled={saving}>
+                        <Check className="w-4 h-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={cancelEdit}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm py-2 px-3 rounded-md bg-muted">{tag}</span>
+                      <Button size="icon" variant="accentGhost" onClick={() => startEdit(index)} disabled={saving}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-red-600 hover:text-red-700 disabled:opacity-40"
+                        onClick={() => void handleDelete(index)}
+                        disabled={saving || isLocked}
+                        title={isLocked ? lockedReason : 'Delete'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
 

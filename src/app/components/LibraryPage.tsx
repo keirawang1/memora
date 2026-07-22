@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Board, MediaItem } from '../types/media';
-import type { SortMode } from '../types/sort';
+import type { SortDirection, SortMode } from '../types/sort';
+import { DEFAULT_SORT_DIRECTION } from '../types/sort';
 import { BoardCard } from './BoardCard';
 import { SearchFilterBar } from './SearchFilterBar';
 import { SortOrderControl } from './SortOrderControl';
@@ -46,6 +47,13 @@ export function LibraryPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(
+    () => DEFAULT_SORT_DIRECTION[boardSortMode] ?? 'asc',
+  );
+
+  useEffect(() => {
+    setSortDirection(DEFAULT_SORT_DIRECTION[boardSortMode] ?? 'asc');
+  }, [boardSortMode]);
 
   const mediaTypeOptions = useMemo(
     () => getBoardMediaTypeOptions(customMediaTypes),
@@ -66,8 +74,13 @@ export function LibraryPage({
 
   const sortedBoards = useMemo(
     () =>
-      sortBoardsForDisplay(filteredBoards, boardSortMode, boardCustomOrder),
-    [filteredBoards, boardSortMode, boardCustomOrder],
+      sortBoardsForDisplay(
+        filteredBoards,
+        boardSortMode,
+        boardCustomOrder,
+        sortDirection,
+      ),
+    [filteredBoards, boardSortMode, boardCustomOrder, sortDirection],
   );
 
   const sortedBoardIds = useMemo(
@@ -82,8 +95,11 @@ export function LibraryPage({
 
   const hasActiveFilters = typeFilters.length > 0;
 
-  const handleSortModeChange = (mode: SortMode) => {
-    void onBoardSortModeChange(mode);
+  const handleSortChange = (mode: SortMode, direction: SortDirection) => {
+    setSortDirection(direction);
+    if (mode !== boardSortMode) {
+      void onBoardSortModeChange(mode);
+    }
   };
 
   const handleReorder = async (nextIds: string[]) => {
@@ -100,7 +116,11 @@ export function LibraryPage({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <SortOrderControl mode={boardSortMode} onModeChange={handleSortModeChange} />
+        <SortOrderControl
+          mode={boardSortMode}
+          direction={sortDirection}
+          onChange={handleSortChange}
+        />
         <SearchFilterBar
           placeholder="Search boards..."
           value={searchQuery}

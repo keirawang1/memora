@@ -21,13 +21,27 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Crop a region from `imageSrc` and export a square JPEG data URL. */
+/**
+ * Crop using percentage area from react-easy-crop (more accurate than rounded pixels).
+ * Avoids the slight side-clip that can happen with croppedAreaPixels rounding.
+ */
 export async function cropImageToDataUrl(
   imageSrc: string,
-  pixelCrop: Area,
+  croppedAreaPercentages: Area,
   size = OUTPUT_SIZE,
 ): Promise<string> {
   const image = await loadImage(imageSrc);
+
+  const rawX = (croppedAreaPercentages.x / 100) * image.naturalWidth;
+  const rawY = (croppedAreaPercentages.y / 100) * image.naturalHeight;
+  const rawW = (croppedAreaPercentages.width / 100) * image.naturalWidth;
+  const rawH = (croppedAreaPercentages.height / 100) * image.naturalHeight;
+
+  // Use the smaller side so we never stretch; keep crop centered if rounding differs.
+  const side = Math.min(rawW, rawH);
+  const x = Math.max(0, Math.min(image.naturalWidth - side, rawX + (rawW - side) / 2));
+  const y = Math.max(0, Math.min(image.naturalHeight - side, rawY + (rawH - side) / 2));
+
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
@@ -35,17 +49,9 @@ export async function cropImageToDataUrl(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Failed to process image');
 
-  ctx.drawImage(
-    image,
-    pixelCrop.x,
-    pixelCrop.y,
-    pixelCrop.width,
-    pixelCrop.height,
-    0,
-    0,
-    size,
-    size,
-  );
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(image, x, y, side, side, 0, 0, size, size);
 
   return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
 }

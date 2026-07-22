@@ -31,8 +31,10 @@ export interface UserTagPreferences {
   genres: string[];
   mediaTypes: string[];
   showAllBoard: boolean;
+  publicBoardsFriendsOnly: boolean;
   librarySort: LibrarySortPreferences;
 }
+
 
 export interface UserOnboardingState {
   completed: boolean;
@@ -42,7 +44,12 @@ export interface UserOnboardingState {
 const DEFAULT_SORT_MODE: SortMode = 'alphabetical';
 
 function parseSortMode(value: unknown): SortMode {
-  if (value === 'alphabetical' || value === 'last_edited' || value === 'custom') {
+  if (
+    value === 'alphabetical' ||
+    value === 'last_edited' ||
+    value === 'custom' ||
+    value === 'rating'
+  ) {
     return value;
   }
   return DEFAULT_SORT_MODE;
@@ -581,7 +588,7 @@ export async function getUserTagPreferences(
   authUserId: string,
 ): Promise<UserTagPreferences> {
   const fullSelect =
-    'genres, media_types, show_all_board, board_sort_mode, board_custom_order, media_sort_mode';
+    'genres, media_types, show_all_board, public_boards_friends_only, board_sort_mode, board_custom_order, media_sort_mode';
 
   const { data: fullData, error: fullError } = await supabase
     .from('users')
@@ -593,6 +600,7 @@ export async function getUserTagPreferences(
     genres?: string[] | null;
     media_types?: string[] | null;
     show_all_board?: boolean | null;
+    public_boards_friends_only?: boolean | null;
     board_sort_mode?: string | null;
     board_custom_order?: string[] | null;
     media_sort_mode?: string | null;
@@ -615,6 +623,7 @@ export async function getUserTagPreferences(
     genres?: string[] | null;
     media_types?: string[] | null;
     show_all_board?: boolean | null;
+    public_boards_friends_only?: boolean | null;
     board_sort_mode?: string | null;
     board_custom_order?: string[] | null;
     media_sort_mode?: string | null;
@@ -624,6 +633,7 @@ export async function getUserTagPreferences(
     genres: typedRow?.genres ?? [],
     mediaTypes: typedRow?.media_types ?? [],
     showAllBoard: typedRow?.show_all_board ?? true,
+    publicBoardsFriendsOnly: typedRow?.public_boards_friends_only ?? false,
     librarySort: {
       boardSortMode: parseSortMode(typedRow?.board_sort_mode),
       boardCustomOrder: parseUuidOrder(typedRow?.board_custom_order),
@@ -686,6 +696,28 @@ export async function updateUserShowAllBoard(
     .eq('user_id', authUserId);
 
   if (error) throw error;
+}
+
+export async function updateUserLibrarySettings(
+  authUserId: string,
+  settings: { showAllBoard: boolean; publicBoardsFriendsOnly: boolean },
+): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({
+      show_all_board: settings.showAllBoard,
+      public_boards_friends_only: settings.publicBoardsFriendsOnly,
+    })
+    .eq('user_id', authUserId);
+
+  if (error) {
+    if (isMissingColumnError(error)) {
+      throw new Error(
+        'Library settings are not available yet. Run the latest Supabase migrations.',
+      );
+    }
+    throw error;
+  }
 }
 
 export async function getUserOnboardingState(

@@ -10,7 +10,7 @@ import { ArrowLeft, Globe, Loader2 } from 'lucide-react';
 import { DEFAULT_ACCENT_COLOR } from '../data/defaults';
 import { DEFAULT_GENRES, DEFAULT_MEDIA_TYPES } from '../data/mediaOptions';
 import { fetchPublicBoardsForUser } from '../supabase/boards';
-import { fetchMediaForPublicBoard } from '../supabase/media';
+import { fetchMediaById, fetchMediaForPublicBoard } from '../supabase/media';
 import { getPublicUserProfile, type PublicUser } from '../supabase/users';
 
 interface UserProfilePageProps {
@@ -90,6 +90,24 @@ export function UserProfilePage({ userId, onBack, accentColor = DEFAULT_ACCENT_C
     setBoardMedia([]);
   };
 
+  const handleMediaClick = async (media: MediaItem) => {
+    setSelectedMedia(media);
+    setDetailDialogOpen(true);
+    try {
+      const full = await fetchMediaById(media.id);
+      if (full) {
+        setSelectedMedia(full);
+        setBoardMedia((prev) =>
+          prev.map((item) =>
+            item.id === media.id ? { ...item, gallery: full.gallery } : item,
+          ),
+        );
+      }
+    } catch {
+      // Detail still opens without gallery
+    }
+  };
+
   if (loadingBoardMedia) {
     return (
       <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
@@ -106,10 +124,7 @@ export function UserProfilePage({ userId, onBack, accentColor = DEFAULT_ACCENT_C
           board={selectedBoard}
           mediaItems={boardMedia}
           onBack={handleBackFromBoard}
-          onMediaClick={(media) => {
-            setSelectedMedia(media);
-            setDetailDialogOpen(true);
-          }}
+          onMediaClick={handleMediaClick}
           onUpdateBoard={async () => {}}
           customMediaTypes={[...DEFAULT_MEDIA_TYPES]}
           customGenres={[...DEFAULT_GENRES]}

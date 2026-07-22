@@ -6,6 +6,7 @@ import {
   createPost,
   createPostComment,
   deletePost,
+  deletePostComment,
   fetchFeedPosts,
   fetchPostComments,
   togglePostLike,
@@ -306,6 +307,9 @@ function PostCard({
   const [submittingComment, setSubmittingComment] = useState(false);
   const [liking, setLiking] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletePostOpen, setDeletePostOpen] = useState(false);
+  const [commentPendingDelete, setCommentPendingDelete] = useState<PostComment | null>(null);
+  const [deletingComment, setDeletingComment] = useState(false);
   const isOwner = post.userId === currentUserId;
 
   const toggleComments = async () => {
@@ -356,9 +360,23 @@ function PostCard({
     setDeleting(true);
     try {
       await deletePost(post.id);
+      setDeletePostOpen(false);
       onDeleted(post.id);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDeleteComment = async () => {
+    if (!commentPendingDelete || deletingComment) return;
+    setDeletingComment(true);
+    try {
+      await deletePostComment(commentPendingDelete.id);
+      setComments((prev) => prev.filter((c) => c.id !== commentPendingDelete.id));
+      onCommentCountChange(post.id, -1);
+      setCommentPendingDelete(null);
+    } finally {
+      setDeletingComment(false);
     }
   };
 
@@ -397,7 +415,7 @@ function PostCard({
                 <DropdownMenuItem
                   className="text-red-600 focus:text-red-600"
                   disabled={deleting}
-                  onClick={() => void handleDelete()}
+                  onClick={() => setDeletePostOpen(true)}
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete post
@@ -457,14 +475,39 @@ function PostCard({
                   />
                 </button>
                 <div className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    onClick={() => onViewProfile(comment.author.id)}
-                    className="text-base font-medium hover:underline"
-                  >
-                    {comment.author.displayName}{' '}
-
-                  </button>
+                  <div className="flex items-start justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onViewProfile(comment.author.id)}
+                      className="text-base font-medium hover:underline text-left"
+                    >
+                      {comment.author.displayName}{' '}
+                    </button>
+                    {comment.userId === currentUserId && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0 h-7 w-7"
+                          >
+                            <MoreHorizontal className="w-3.5 h-3.5" />
+                            <span className="sr-only">Comment options</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-600"
+                            onClick={() => setCommentPendingDelete(comment)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete comment
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
                   <p className="text-base text-foreground mt-1 whitespace-pre-wrap">{comment.body}</p>
                 </div>
               </div>
@@ -493,6 +536,59 @@ function PostCard({
           </div>
         )}
       </CardContent>
+
+      <AlertDialog open={deletePostOpen} onOpenChange={setDeletePostOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the post and its comments. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDelete();
+              }}
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={commentPendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setCommentPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this comment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes your comment. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingComment}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deletingComment}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDeleteComment();
+              }}
+            >
+              {deletingComment ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

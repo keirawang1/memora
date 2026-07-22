@@ -268,17 +268,16 @@ export async function fetchMedia(userId?: string): Promise<MediaItem[]> {
   );
 }
 
-/** Lazy-load gallery (and optionally refresh one item) when opening media detail. */
+/** Lazy-load gallery (and optionally refresh one item) when opening media detail.
+ * Works for own media and media on public boards (RLS). */
 export async function fetchMediaById(mediaId: string): Promise<MediaItem | null> {
   const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
-  if (!userId) return null;
+  if (!session?.user?.id) return null;
 
   const { data, error } = await supabase
     .from('media')
     .select(MEDIA_DETAIL_SELECT)
     .eq('media_id', mediaId)
-    .eq('user_id', userId)
     .maybeSingle();
 
   if (error) throw error;
@@ -420,8 +419,11 @@ export async function updateMedia(
   if (error) throw error;
 
   const mapped = mapDbMediaToMedia(data as DbMedia);
+  // List select omits gallery — avoid wiping client/cache state with [].
   if (input.gallery !== undefined) {
     mapped.gallery = input.gallery;
+  } else {
+    delete mapped.gallery;
   }
   return mapped;
 }

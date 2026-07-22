@@ -36,7 +36,10 @@ export function GenreSelectDropdown({
           <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-96 p-2" align="start">
+      <PopoverContent
+        className="p-2 w-[var(--radix-popover-trigger-width)]"
+        align="start"
+      >
         <div className="grid grid-cols-3 gap-0.5 max-h-56 overflow-y-auto overscroll-contain">
           {genres.map((genre) => {
             const isSelected = selectedGenres.includes(genre);

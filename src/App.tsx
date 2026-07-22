@@ -55,7 +55,7 @@ import {
   updateUserGenres,
   updateUserMediaTypes,
   updateUserProfile,
-  updateUserShowAllBoard,
+  updateUserLibrarySettings,
   updateUsername,
   updateUserBoardSort,
   updateUserMediaSort,
@@ -116,6 +116,7 @@ function App() {
   const [customGenres, setCustomGenres] = useState<string[]>([]);
   const [customMediaTypes, setCustomMediaTypes] = useState<string[]>([]);
   const [showAllBoard, setShowAllBoard] = useState(true);
+  const [publicBoardsFriendsOnly, setPublicBoardsFriendsOnly] = useState(false);
   const [boardSortMode, setBoardSortMode] = useState<SortMode>('alphabetical');
   const [boardCustomOrder, setBoardCustomOrder] = useState<string[]>([]);
   const [mediaSortMode, setMediaSortMode] = useState<SortMode>('alphabetical');
@@ -152,6 +153,7 @@ function App() {
     setCustomGenres([]);
     setCustomMediaTypes([]);
     setShowAllBoard(true);
+    setPublicBoardsFriendsOnly(false);
     setBoardSortMode('alphabetical');
     setBoardCustomOrder([]);
     setMediaSortMode('alphabetical');
@@ -238,6 +240,7 @@ function App() {
       setCustomGenres(prefs.genres);
       setCustomMediaTypes(prefs.mediaTypes);
       setShowAllBoard(prefs.showAllBoard);
+      setPublicBoardsFriendsOnly(prefs.publicBoardsFriendsOnly);
       setBoardSortMode(prefs.librarySort.boardSortMode);
       setBoardCustomOrder(prefs.librarySort.boardCustomOrder);
       setMediaSortMode(prefs.librarySort.mediaSortMode);
@@ -245,6 +248,7 @@ function App() {
       setCustomGenres([]);
       setCustomMediaTypes([]);
       setShowAllBoard(true);
+      setPublicBoardsFriendsOnly(false);
       setBoardSortMode('alphabetical');
       setBoardCustomOrder([]);
       setMediaSortMode('alphabetical');
@@ -582,9 +586,17 @@ function App() {
     try {
       const updated = await updateMedia(mediaId, { notes });
       setMediaItems((prev) =>
-        prev.map((item) => (item.id === mediaId ? updated : item)),
+        prev.map((item) =>
+          item.id === mediaId
+            ? { ...item, ...updated, gallery: updated.gallery ?? item.gallery }
+            : item,
+        ),
       );
-      setSelectedMedia((prev) => (prev?.id === mediaId ? updated : prev));
+      setSelectedMedia((prev) =>
+        prev?.id === mediaId
+          ? { ...prev, ...updated, gallery: updated.gallery ?? prev.gallery }
+          : prev,
+      );
       toast.success('Notes updated');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update notes';
@@ -774,12 +786,16 @@ function App() {
     }
   };
 
-  const handleSaveLibrarySettings = async (data: { showAllBoard: boolean }) => {
+  const handleSaveLibrarySettings = async (data: {
+    showAllBoard: boolean;
+    publicBoardsFriendsOnly: boolean;
+  }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('You must be signed in');
-      await updateUserShowAllBoard(user.id, data.showAllBoard);
+      await updateUserLibrarySettings(user.id, data);
       setShowAllBoard(data.showAllBoard);
+      setPublicBoardsFriendsOnly(data.publicBoardsFriendsOnly);
       if (!data.showAllBoard && selectedBoard && isAllBoard(selectedBoard)) {
         navigate(APP_ROUTES.library);
       }
@@ -1274,7 +1290,20 @@ function App() {
         onSaveCustomGenres={handleSaveCustomGenres}
         onSaveCustomMediaTypes={handleSaveCustomMediaTypes}
         showAllBoard={showAllBoard}
+        publicBoardsFriendsOnly={publicBoardsFriendsOnly}
         onSaveLibrarySettings={handleSaveLibrarySettings}
+        usedCustomGenres={customGenres.filter((genre) =>
+          mediaItems.some((item) =>
+            item.genre.some((g) => g.toLowerCase() === genre.toLowerCase()),
+          ),
+        )}
+        usedCustomMediaTypes={customMediaTypes.filter((type) => {
+          const key = type.toLowerCase();
+          return (
+            mediaItems.some((item) => item.type.toLowerCase() === key) ||
+            boards.some((board) => (board.type ?? '').toLowerCase() === key)
+          );
+        })}
       />
 
       {showOnboardingTour && (

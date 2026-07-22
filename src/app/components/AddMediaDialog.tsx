@@ -11,12 +11,12 @@ import { StarRating } from './StarRating';
 import type { MediaType, WatchStatus, Genre, Board } from '../types/media';
 import { BoardMultiSelect } from './BoardMultiSelect';
 import { GenreSelectDropdown } from './GenreSelectDropdown';
+import { MediaTypeSelectDropdown } from './MediaTypeSelectDropdown';
 import { CoverImageUpload } from './CoverImageUpload';
 import { isAllBoard } from '../data/allBoard';
 import {
   DEFAULT_GENRES,
   DEFAULT_MEDIA_TYPES,
-  formatMediaTypeLabel,
 } from '../data/mediaOptions';
 import { accentButtonStyle } from '../utils/accentColor';
 
@@ -154,18 +154,12 @@ export function AddMediaDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="type">Media Type</Label>
-              <Select value={type} onValueChange={setType}>
-                <SelectTrigger id="type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {allMediaTypes.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {formatMediaTypeLabel(t)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MediaTypeSelectDropdown
+                id="type"
+                options={allMediaTypes}
+                value={type}
+                onChange={setType}
+              />
             </div>
 
             <div className="space-y-2">

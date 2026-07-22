@@ -65,7 +65,13 @@ interface SettingsDialogProps {
   onSaveCustomGenres: (genres: string[]) => Promise<void>;
   onSaveCustomMediaTypes: (mediaTypes: string[]) => Promise<void>;
   showAllBoard: boolean;
-  onSaveLibrarySettings?: (data: { showAllBoard: boolean }) => Promise<void>;
+  publicBoardsFriendsOnly: boolean;
+  onSaveLibrarySettings?: (data: {
+    showAllBoard: boolean;
+    publicBoardsFriendsOnly: boolean;
+  }) => Promise<void>;
+  usedCustomGenres?: string[];
+  usedCustomMediaTypes?: string[];
 }
 
 function SettingsMenuItem({
@@ -178,11 +184,17 @@ export function SettingsDialog({
   onSaveCustomGenres,
   onSaveCustomMediaTypes,
   showAllBoard,
+  publicBoardsFriendsOnly,
   onSaveLibrarySettings,
+  usedCustomGenres = [],
+  usedCustomMediaTypes = [],
 }: SettingsDialogProps) {
   const [page, setPage] = useState<SettingsPage>('menu');
   const [draftTheme, setDraftTheme] = useState<AppThemeSettings>(themeSettings);
   const [draftShowAllBoard, setDraftShowAllBoard] = useState(showAllBoard);
+  const [draftPublicBoardsFriendsOnly, setDraftPublicBoardsFriendsOnly] = useState(
+    publicBoardsFriendsOnly,
+  );
   const [editUsername, setEditUsername] = useState(username);
   const [editEmail, setEditEmail] = useState(email);
   const [editAvatar, setEditAvatar] = useState(avatar);
@@ -218,8 +230,9 @@ export function SettingsDialog({
   useEffect(() => {
     if (page === 'library') {
       setDraftShowAllBoard(showAllBoard);
+      setDraftPublicBoardsFriendsOnly(publicBoardsFriendsOnly);
     }
-  }, [page, showAllBoard]);
+  }, [page, showAllBoard, publicBoardsFriendsOnly]);
 
   useEffect(() => {
     if (page === 'account') {
@@ -301,6 +314,7 @@ export function SettingsDialog({
     }
     if (page === 'library') {
       setDraftShowAllBoard(showAllBoard);
+      setDraftPublicBoardsFriendsOnly(publicBoardsFriendsOnly);
     }
     setPage('menu');
   };
@@ -331,7 +345,10 @@ export function SettingsDialog({
     if (!onSaveLibrarySettings) return;
     setSavingLibrary(true);
     try {
-      await onSaveLibrarySettings({ showAllBoard: draftShowAllBoard });
+      await onSaveLibrarySettings({
+        showAllBoard: draftShowAllBoard,
+        publicBoardsFriendsOnly: draftPublicBoardsFriendsOnly,
+      });
       setPage('menu');
     } finally {
       setSavingLibrary(false);
@@ -585,6 +602,22 @@ export function SettingsDialog({
                 />
               </div>
 
+              <div className="flex items-center justify-between rounded-md border px-3 py-3">
+                <div className="space-y-0.5 pr-4">
+                  <Label htmlFor="public-boards-friends-only">
+                    Public Boards: Friends Only
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    When on, only friends can view your public boards.
+                  </p>
+                </div>
+                <Switch
+                  id="public-boards-friends-only"
+                  checked={draftPublicBoardsFriendsOnly}
+                  onCheckedChange={setDraftPublicBoardsFriendsOnly}
+                />
+              </div>
+
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">
                   Custom options appear in Add and Edit Media dropdowns.
@@ -786,6 +819,8 @@ export function SettingsDialog({
         tags={customGenres}
         onSave={onSaveCustomGenres}
         addPlaceholder="Genre name"
+        lockedTags={usedCustomGenres}
+        lockedReason="This genre is used by media and cannot be deleted."
       />
 
       <ManageTagsDialog
@@ -796,6 +831,8 @@ export function SettingsDialog({
         tags={customMediaTypes}
         onSave={onSaveCustomMediaTypes}
         addPlaceholder="Media type name"
+        lockedTags={usedCustomMediaTypes}
+        lockedReason="This media type is used by a board or media and cannot be deleted."
       />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

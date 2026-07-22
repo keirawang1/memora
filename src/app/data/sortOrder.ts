@@ -1,12 +1,12 @@
 import type { Board, MediaItem } from '../types/media';
-import type { SortMode } from '../types/sort';
+import type { SortDirection, SortMode } from '../types/sort';
 import { isAllBoard, sortBoardsWithAllFirst } from './allBoard';
 
 function compareAlphabetical(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: 'base' });
 }
 
-function compareLastEdited(
+function compareLastEditedAsc(
   aUpdated: string | undefined,
   bUpdated: string | undefined,
   aFallback: string,
@@ -17,7 +17,11 @@ function compareLastEdited(
   if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
   if (Number.isNaN(aTime)) return 1;
   if (Number.isNaN(bTime)) return -1;
-  return bTime - aTime;
+  return aTime - bTime;
+}
+
+function applyDirection(cmp: number, direction: SortDirection): number {
+  return direction === 'asc' ? cmp : -cmp;
 }
 
 function orderByCustomIds<T extends { id: string }>(
@@ -40,6 +44,7 @@ export function sortBoardsForDisplay(
   boards: Board[],
   mode: SortMode,
   customOrder: string[],
+  direction: SortDirection = 'asc',
 ): Board[] {
   const allBoards = boards.filter(isAllBoard);
   const otherBoards = boards.filter((b) => !isAllBoard(b));
@@ -48,17 +53,22 @@ export function sortBoardsForDisplay(
   switch (mode) {
     case 'alphabetical':
       sortedOthers = [...otherBoards].sort((a, b) =>
-        compareAlphabetical(a.name, b.name),
+        applyDirection(compareAlphabetical(a.name, b.name), direction),
       );
       break;
     case 'last_edited':
       sortedOthers = [...otherBoards].sort((a, b) =>
-        compareLastEdited(a.updatedAt, b.updatedAt, a.createdAt, b.createdAt),
+        applyDirection(
+          compareLastEditedAsc(a.updatedAt, b.updatedAt, a.createdAt, b.createdAt),
+          direction,
+        ),
       );
       break;
-    case 'custom':
-      sortedOthers = orderByCustomIds(otherBoards, customOrder);
+    case 'custom': {
+      const ordered = orderByCustomIds(otherBoards, customOrder);
+      sortedOthers = direction === 'desc' ? [...ordered].reverse() : ordered;
       break;
+    }
     default:
       sortedOthers = otherBoards;
   }
@@ -70,16 +80,31 @@ export function sortMediaForDisplay(
   items: MediaItem[],
   mode: SortMode,
   customOrder: string[],
+  direction: SortDirection = 'asc',
 ): MediaItem[] {
   switch (mode) {
     case 'alphabetical':
-      return [...items].sort((a, b) => compareAlphabetical(a.title, b.title));
+      return [...items].sort((a, b) =>
+        applyDirection(compareAlphabetical(a.title, b.title), direction),
+      );
     case 'last_edited':
       return [...items].sort((a, b) =>
-        compareLastEdited(a.updatedAt, b.updatedAt, a.dateAdded, b.dateAdded),
+        applyDirection(
+          compareLastEditedAsc(a.updatedAt, b.updatedAt, a.dateAdded, b.dateAdded),
+          direction,
+        ),
       );
-    case 'custom':
-      return orderByCustomIds(items, customOrder);
+    case 'rating':
+      return [...items].sort((a, b) => {
+        const ar = a.rating != null && a.rating > 0 ? a.rating : -1;
+        const br = b.rating != null && b.rating > 0 ? b.rating : -1;
+        if (ar !== br) return applyDirection(ar - br, direction);
+        return applyDirection(compareAlphabetical(a.title, b.title), 'asc');
+      });
+    case 'custom': {
+      const ordered = orderByCustomIds(items, customOrder);
+      return direction === 'desc' ? [...ordered].reverse() : ordered;
+    }
     default:
       return items;
   }

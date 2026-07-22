@@ -1,22 +1,43 @@
-import { ArrowUpDown } from 'lucide-react';
+import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown } from 'lucide-react';
 import { Button } from './ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { SORT_MODE_LABELS, type SortMode } from '../types/sort';
+import {
+  BOARD_SORT_MODES,
+  DEFAULT_SORT_DIRECTION,
+  SORT_MODE_LABELS,
+  type SortDirection,
+  type SortMode,
+} from '../types/sort';
+import { cn } from './ui/utils';
 
 interface SortOrderControlProps {
   mode: SortMode;
-  onModeChange: (mode: SortMode) => void;
+  direction: SortDirection;
+  onChange: (mode: SortMode, direction: SortDirection) => void;
+  modes?: SortMode[];
 }
 
-export function SortOrderControl({ mode, onModeChange }: SortOrderControlProps) {
+export function SortOrderControl({
+  mode,
+  direction,
+  onChange,
+  modes = BOARD_SORT_MODES,
+}: SortOrderControlProps) {
+  const handleSelect = (nextMode: SortMode) => {
+    if (nextMode === mode) {
+      onChange(mode, direction === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    onChange(nextMode, DEFAULT_SORT_DIRECTION[nextMode]);
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -30,18 +51,29 @@ export function SortOrderControl({ mode, onModeChange }: SortOrderControlProps) 
           <ArrowUpDown className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
+      <DropdownMenuContent align="start" className="w-52">
         <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={mode}
-          onValueChange={(value) => onModeChange(value as SortMode)}
-        >
-          {(Object.keys(SORT_MODE_LABELS) as SortMode[]).map((key) => (
-            <DropdownMenuRadioItem key={key} value={key}>
-              {SORT_MODE_LABELS[key]}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+        {modes.map((key) => {
+          const isActive = mode === key;
+          return (
+            <DropdownMenuItem
+              key={key}
+              className={cn('justify-between gap-2', isActive && 'bg-accent')}
+              onSelect={(e) => {
+                e.preventDefault();
+                handleSelect(key);
+              }}
+            >
+              <span>{SORT_MODE_LABELS[key]}</span>
+              {isActive &&
+                (direction === 'asc' ? (
+                  <ArrowUpAZ className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                ) : (
+                  <ArrowDownAZ className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                ))}
+            </DropdownMenuItem>
+          );
+        })}
         {mode === 'custom' && (
           <>
             <DropdownMenuSeparator />
@@ -50,6 +82,10 @@ export function SortOrderControl({ mode, onModeChange }: SortOrderControlProps) 
             </p>
           </>
         )}
+        <DropdownMenuSeparator />
+        <p className="px-2 py-1.5 text-xs text-muted-foreground">
+          Click again to reverse
+        </p>
       </DropdownMenuContent>
     </DropdownMenu>
   );

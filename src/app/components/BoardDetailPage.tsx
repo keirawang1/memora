@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Board, MediaItem, WatchStatus } from '../types/media';
-import type { SortMode } from '../types/sort';
+import type { SortDirection, SortMode } from '../types/sort';
+import { DEFAULT_SORT_DIRECTION, MEDIA_SORT_MODES } from '../types/sort';
 import { isAllBoard } from '../data/allBoard';
 import { sortMediaForDisplay } from '../data/sortOrder';
 import { MediaCard } from './MediaCard';
@@ -74,9 +75,16 @@ export function BoardDetailPage({
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(
+    () => DEFAULT_SORT_DIRECTION[mediaSortMode] ?? 'asc',
+  );
   const isSystemAllBoard = isAllBoard(board);
   const readOnlyBoard = readOnly || isSystemAllBoard;
   const canEditBoard = !readOnly;
+
+  useEffect(() => {
+    setSortDirection(DEFAULT_SORT_DIRECTION[mediaSortMode] ?? 'asc');
+  }, [mediaSortMode]);
 
   const allGenres = useMemo(
     () => [...DEFAULT_GENRES, ...customGenres],
@@ -113,8 +121,13 @@ export function BoardDetailPage({
 
   const sortedMediaItems = useMemo(
     () =>
-      sortMediaForDisplay(filteredMediaItems, mediaSortMode, customMediaOrder),
-    [filteredMediaItems, mediaSortMode, customMediaOrder],
+      sortMediaForDisplay(
+        filteredMediaItems,
+        mediaSortMode,
+        customMediaOrder,
+        sortDirection,
+      ),
+    [filteredMediaItems, mediaSortMode, customMediaOrder, sortDirection],
   );
 
   const sortedMediaIds = useMemo(
@@ -127,8 +140,11 @@ export function BoardDetailPage({
     [sortedMediaItems],
   );
 
-  const handleMediaSortModeChange = (mode: SortMode) => {
-    void onMediaSortModeChange(mode);
+  const handleMediaSortChange = (mode: SortMode, direction: SortDirection) => {
+    setSortDirection(direction);
+    if (mode !== mediaSortMode) {
+      void onMediaSortModeChange(mode);
+    }
   };
 
   const handleMediaReorder = async (nextVisibleIds: string[]) => {
@@ -198,7 +214,9 @@ export function BoardDetailPage({
         <div className="flex flex-wrap gap-2">
           <SortOrderControl
             mode={mediaSortMode}
-            onModeChange={handleMediaSortModeChange}
+            direction={sortDirection}
+            onChange={handleMediaSortChange}
+            modes={MEDIA_SORT_MODES}
           />
           <SearchFilterBar
             placeholder="Search media..."

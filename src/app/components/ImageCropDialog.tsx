@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Cropper, { type Area } from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
@@ -23,28 +23,40 @@ export function ImageCropDialog({
 }: ImageCropDialogProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [croppedArea, setCroppedArea] = useState<Area | null>(null);
   const [saving, setSaving] = useState(false);
+  // Wait for dialog layout so cropper media size isn't miscalculated.
+  const [cropperReady, setCropperReady] = useState(false);
 
-  const onCropComplete = useCallback((_: Area, pixels: Area) => {
-    setCroppedAreaPixels(pixels);
+  useEffect(() => {
+    if (!open || !imageSrc) {
+      setCropperReady(false);
+      return;
+    }
+    const id = window.setTimeout(() => setCropperReady(true), 50);
+    return () => window.clearTimeout(id);
+  }, [open, imageSrc]);
+
+  const onCropComplete = useCallback((area: Area) => {
+    setCroppedArea(area);
   }, []);
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
       setCrop({ x: 0, y: 0 });
       setZoom(1);
-      setCroppedAreaPixels(null);
+      setCroppedArea(null);
       setSaving(false);
+      setCropperReady(false);
     }
     onOpenChange(next);
   };
 
   const handleApply = async () => {
-    if (!imageSrc || !croppedAreaPixels || saving) return;
+    if (!imageSrc || !croppedArea || saving) return;
     setSaving(true);
     try {
-      const dataUrl = await cropImageToDataUrl(imageSrc, croppedAreaPixels);
+      const dataUrl = await cropImageToDataUrl(imageSrc, croppedArea);
       onCropped(dataUrl);
       handleOpenChange(false);
     } catch (err) {
@@ -64,12 +76,14 @@ export function ImageCropDialog({
         </DialogHeader>
 
         <div className="relative h-72 w-full overflow-hidden rounded-lg bg-muted">
-          {imageSrc && (
+          {imageSrc && cropperReady && (
             <Cropper
               image={imageSrc}
               crop={crop}
               zoom={zoom}
               aspect={1}
+              objectFit="contain"
+              showGrid
               onCropChange={setCrop}
               onZoomChange={setZoom}
               onCropComplete={onCropComplete}
@@ -95,7 +109,7 @@ export function ImageCropDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={() => void handleApply()} disabled={saving || !croppedAreaPixels}>
+          <Button onClick={() => void handleApply()} disabled={saving || !croppedArea}>
             {saving ? 'Applying…' : 'Apply crop'}
           </Button>
         </div>
