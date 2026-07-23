@@ -11,6 +11,18 @@ const logoSize: Record<BrandMarkSize, string> = {
   lg: 'w-20 h-20 sm:w-24 sm:h-24',
 };
 
+const titleSize: Record<BrandMarkSize, string> = {
+  sm: 'text-base font-medium',
+  md: 'text-base font-medium',
+  lg: 'text-2xl sm:text-3xl font-semibold',
+};
+
+const taglineSize: Record<BrandMarkSize, string> = {
+  sm: 'text-xs',
+  md: 'text-xs',
+  lg: 'text-sm sm:text-base',
+};
+
 interface BrandMarkProps {
   size?: BrandMarkSize;
   /** Centered stack (auth) vs horizontal row (app chrome). */
@@ -37,15 +49,17 @@ export function BrandMark({
 
   const text = (
     <div className={cn(layout === 'stack' && 'text-center')}>
-      <p className={cn(brandFont, 'tracking-tight text-base font-medium leading-tight')}>
+      <p className={cn(brandFont, 'tracking-tight leading-tight', titleSize[size])}>
         Memora
       </p>
       {showTagline && (
         <p
           className={cn(
             brandFont,
-            'text-xs text-muted-foreground leading-snug',
+            'text-muted-foreground leading-snug',
+            taglineSize[size],
             hideTaglineOnMobile && 'hidden sm:block',
+            size === 'lg' && 'mt-1',
           )}
         >
           Your taste, redefined.
@@ -56,7 +70,7 @@ export function BrandMark({
 
   if (layout === 'stack') {
     return (
-      <div className={cn('flex flex-col items-center gap-3', className)}>
+      <div className={cn('flex flex-col items-center gap-4', className)}>
         {logo}
         {text}
       </div>

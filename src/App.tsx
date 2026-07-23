@@ -493,13 +493,16 @@ function App() {
       if (authedUserIdRef.current === session.user.id) return;
       applyingSession = true;
       try {
+        const existing = await getUserProfile(session.user.id);
         const profile =
-          (await getUserProfile(session.user.id)) ??
+          existing ??
           (await ensureUserProfile(
             session.user.id,
             session.user.email ?? '',
           ));
 
+        // Email confirm + brand-new Google users need onboarding.
+        // Existing email accounts linked via Google already have a profile.
         handleAuthSuccess(
           session.user.id,
           profile.username,
@@ -508,7 +511,7 @@ function App() {
           session.access_token,
           profile.avatar,
           profile.bio,
-          isNewSignup,
+          isNewSignup || !existing,
         );
       } catch (error) {
         if (mounted) {

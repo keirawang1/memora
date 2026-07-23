@@ -35,6 +35,11 @@ export function getEmailConfirmRedirectUrl(): string {
   return `${window.location.origin}/sign-in`;
 }
 
+/** OAuth return URL — must be allow-listed in Supabase Auth redirect URLs. */
+export function getOAuthRedirectUrl(): string {
+  return `${window.location.origin}/sign-in`;
+}
+
 /**
  * Consume auth callback params (hash tokens, PKCE code, or token_hash) and return a session if possible.
  */

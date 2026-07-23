@@ -17,6 +17,7 @@ import {
   jikanSearchAnime,
   jikanSearchManga,
   jikanSeasonNow,
+  jikanTopAnime,
   jikanTopAiringAnime,
   jikanTopPublishingManga,
   jikanTopManga,

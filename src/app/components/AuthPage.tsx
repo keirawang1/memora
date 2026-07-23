@@ -10,7 +10,7 @@ import { ensureUserProfile } from '../supabase/users';
 import { toast } from 'sonner';
 import { BrandMark } from './BrandMark';
 import { getPasswordResetRedirectUrl } from '../utils/authRecovery';
-import { getEmailConfirmRedirectUrl } from '../utils/authCallback';
+import { getEmailConfirmRedirectUrl, getOAuthRedirectUrl } from '../utils/authCallback';
 import {
   formatAuthEmailError,
   getAuthEmailCooldownSeconds,
@@ -22,6 +22,42 @@ import {
   getAuthModeFromPath,
   type AuthMode,
 } from '../utils/appRoutes';
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="#EA4335"
+        d="M12 10.2v3.6h5.1c-.2 1.2-.9 2.2-1.9 2.9l3.1 2.4c1.8-1.7 2.9-4.1 2.9-7 0-.7-.1-1.3-.2-1.9H12z"
+      />
+      <path
+        fill="#34A853"
+        d="M6.6 14.3l-.5.4-1.8 1.4C5.7 18.4 8.6 20.4 12 20.4c2.1 0 3.9-.7 5.2-1.9l-3.1-2.4c-.9.6-2 .9-3.1.9-2.4 0-4.4-1.6-5.1-3.8z"
+      />
+      <path
+        fill="#4A90E2"
+        d="M4.3 7.9C3.8 8.9 3.6 10 3.6 12s.2 3.1.7 4.1c0 .1 2.3-1.8 2.3-1.8-.1-.4-.2-.8-.2-1.3s.1-.9.2-1.3L4.3 7.9z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M12 3.6c1.2 0 2.2.4 3.1 1.1l2.3-2.3C15.9 1.1 14.1.4 12 .4 8.6.4 5.7 2.4 4.3 5.5L6.6 7.3C7.6 5.2 9.6 3.6 12 3.6z"
+      />
+    </svg>
+  );
+}
+
+function AuthDivider() {
+  return (
+    <div className="relative py-1">
+      <div className="absolute inset-0 flex items-center">
+        <span className="w-full border-t" />
+      </div>
+      <div className="relative flex justify-center text-xs uppercase">
+        <span className="bg-card px-2 text-muted-foreground">or</span>
+      </div>
+    </div>
+  );
+}
 
 function PasswordInput({
   id,
@@ -133,6 +169,30 @@ export function AuthPage({
       profile.bio,
       isNewSignup,
     );
+  };
+
+  const handleGoogleAuth = async () => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: getOAuthRedirectUrl(),
+          queryParams: {
+            // Prefer account picker; still returns the same Google email for linking.
+            prompt: 'select_account',
+          },
+        },
+      });
+      if (error) throw error;
+      // Browser redirects to Google; session is settled on return via App auth callback.
+    } catch (error: unknown) {
+      console.error('Error starting Google sign-in:', error);
+      const message =
+        error instanceof Error ? error.message : 'Could not start Google sign-in';
+      toast.error(message);
+      setIsLoading(false);
+    }
   };
 
   const handleSignIn = async () => {
@@ -423,6 +483,17 @@ export function AuthPage({
               >
                 {isLoading ? 'Signing in...' : 'Sign In'}
               </Button>
+              <AuthDivider />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={isLoading}
+                onClick={() => void handleGoogleAuth()}
+              >
+                <GoogleIcon className="size-4 mr-2" />
+                Continue with Google
+              </Button>
               <p className="text-xs text-muted-foreground text-center">
                 Don&apos;t have an account?{' '}
                 <button
@@ -437,6 +508,10 @@ export function AuthPage({
                 >
                   Create account
                 </button>
+              </p>
+              <p className="text-[11px] text-muted-foreground text-center leading-snug">
+                If you already signed up with email, Google will link to that account when the
+                email matches.
               </p>
             </CardContent>
           </Card>
@@ -568,6 +643,17 @@ export function AuthPage({
               >
                 {isLoading ? 'Creating account...' : 'Create Account'}
               </Button>
+              <AuthDivider />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={isLoading}
+                onClick={() => void handleGoogleAuth()}
+              >
+                <GoogleIcon className="size-4 mr-2" />
+                Sign up with Google
+              </Button>
               <p className="text-xs text-muted-foreground text-center">
                 Already have an account?{' '}
                 <button
@@ -582,6 +668,10 @@ export function AuthPage({
                 >
                   Sign in
                 </button>
+              </p>
+              <p className="text-[11px] text-muted-foreground text-center leading-snug">
+                If Google uses the same email as an existing Memora account, they&apos;ll be
+                linked automatically.
               </p>
             </CardContent>
           </Card>
