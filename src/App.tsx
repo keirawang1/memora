@@ -304,13 +304,18 @@ function App() {
           setPreferredGenres(onboarding.preferredGenres);
           setPreferredMediaTypes(onboarding.preferredMediaTypes);
           setOnboardingPreferencesSet(onboarding.preferencesSet);
-          if (!onboarding.completed && onboarding.preferencesSet) {
+          if (onboarding.completed) {
+            setOnboardingProfileDone(true);
+            setShowOnboardingTour(false);
+          } else if (onboarding.preferencesSet) {
+            // Prefs done (incl. skip) — resume tour; profile is session-only for new signups.
             setOnboardingProfileDone(true);
             setShowOnboardingTour(true);
-          } else if (onboarding.completed) {
-            setOnboardingProfileDone(true);
+          } else {
+            // Incomplete prefs: keep profileDone from signup (false). On refresh the
+            // default is true so returning users skip profile and land on genres.
+            setShowOnboardingTour(false);
           }
-          // else: leave onboardingProfileDone as set by signup (false) or prior state
         })
         .catch(() => {
           setOnboardingCompleted(true);

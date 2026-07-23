@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './ui/button';
 import { X } from 'lucide-react';
 
@@ -242,7 +243,7 @@ export function OnboardingTour({
     return null;
   }
 
-  return (
+  const tourUi = (
     <div
       className="fixed inset-0 z-[100] pointer-events-none"
       role="dialog"
@@ -348,8 +349,9 @@ export function OnboardingTour({
       )}
 
       <div
-        className="z-[101] rounded-lg border bg-background p-4 shadow-lg pointer-events-auto"
-        style={tooltipStyle()}
+        className="pointer-events-auto rounded-lg border bg-background p-4 shadow-lg"
+        style={{ ...tooltipStyle(), zIndex: 110 }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-2 mb-2">
           <p className="text-xs text-muted-foreground">
@@ -370,15 +372,17 @@ export function OnboardingTour({
         <p className="text-sm text-muted-foreground mb-4">{step.description}</p>
         <div className="flex flex-wrap justify-end gap-2">
           {!isLast && (
-            <Button variant="ghost" size="sm" onClick={finish}>
+            <Button type="button" variant="ghost" size="sm" onClick={finish}>
               Skip
             </Button>
           )}
-          <Button variant="accent" size="sm" onClick={goNext}>
+          <Button type="button" variant="accent" size="sm" onClick={goNext}>
             {isLast ? 'Got it' : 'Next'}
           </Button>
         </div>
       </div>
     </div>
   );
+
+  return createPortal(tourUi, document.body);
 }

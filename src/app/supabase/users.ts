@@ -728,17 +728,41 @@ export async function getUserOnboardingState(
 ): Promise<UserOnboardingState> {
   const { data, error } = await supabase
     .from('users')
-    .select('onboarding_completed, preferred_genres, preferred_media_types')
+    .select(
+      'onboarding_completed, preferred_genres, preferred_media_types, onboarding_preferences_set',
+    )
     .eq('user_id', authUserId)
     .maybeSingle();
 
   if (error) {
     if (isMissingColumnError(error)) {
+      // Pre-migration DBs: prefer genres columns if present, else skip onboarding UI.
+      const fallback = await supabase
+        .from('users')
+        .select('onboarding_completed, preferred_genres, preferred_media_types')
+        .eq('user_id', authUserId)
+        .maybeSingle();
+      if (fallback.error && isMissingColumnError(fallback.error)) {
+        return {
+          completed: true,
+          preferredGenres: [],
+          preferredMediaTypes: [],
+          preferencesSet: true,
+        };
+      }
+      if (fallback.error) throw fallback.error;
+      const row = fallback.data as {
+        onboarding_completed?: boolean | null;
+        preferred_genres?: string[] | null;
+        preferred_media_types?: string[] | null;
+      } | null;
       return {
-        completed: true,
-        preferredGenres: [],
-        preferredMediaTypes: [],
-        preferencesSet: true,
+        completed: row?.onboarding_completed ?? true,
+        preferredGenres: row?.preferred_genres ?? [],
+        preferredMediaTypes: row?.preferred_media_types ?? [],
+        // Without the flag column we cannot tell skip vs unset — treat unset so
+        // new accounts still see preference onboarding when incomplete.
+        preferencesSet: row?.onboarding_completed ?? true,
       };
     }
     throw error;
@@ -748,16 +772,14 @@ export async function getUserOnboardingState(
     onboarding_completed?: boolean | null;
     preferred_genres?: string[] | null;
     preferred_media_types?: string[] | null;
+    onboarding_preferences_set?: boolean | null;
   } | null;
-
-  const preferencesSet =
-    row?.preferred_genres != null || row?.preferred_media_types != null;
 
   return {
     completed: row?.onboarding_completed ?? true,
     preferredGenres: row?.preferred_genres ?? [],
     preferredMediaTypes: row?.preferred_media_types ?? [],
-    preferencesSet,
+    preferencesSet: row?.onboarding_preferences_set ?? false,
   };
 }
 
@@ -771,12 +793,29 @@ export async function saveOnboardingPreferences(
     .update({
       preferred_genres: preferredGenres,
       preferred_media_types: preferredMediaTypes,
+      onboarding_preferences_set: true,
     })
     .eq('user_id', authUserId);
 
   if (error) {
     if (isMissingColumnError(error)) {
-      throw new Error('Onboarding is not available yet. Run the latest Supabase migrations.');
+      // Older DBs without the flag column: still persist prefs arrays.
+      const { error: fallbackError } = await supabase
+        .from('users')
+        .update({
+          preferred_genres: preferredGenres,
+          preferred_media_types: preferredMediaTypes,
+        })
+        .eq('user_id', authUserId);
+      if (fallbackError) {
+        if (isMissingColumnError(fallbackError)) {
+          throw new Error(
+            'Onboarding is not available yet. Run the latest Supabase migrations.',
+          );
+        }
+        throw fallbackError;
+      }
+      return;
     }
     throw error;
   }
@@ -865,7 +904,6 @@ export async function createUserProfile(
     accent_color: DEFAULT_ACCENT_COLOR,
     theme_mode: 'light',
     onboarding_completed: false,
-    preferred_genres: [],
   };
 
   let lastError: { code?: string; message?: string } | null = null;

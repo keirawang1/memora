@@ -76,13 +76,11 @@ export function OnboardingProfilePage({
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="onboarding-username">Username</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                @
-              </span>
+            <div className="flex items-center rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring">
+              <span className="pl-3 text-muted-foreground text-sm leading-none">@</span>
               <Input
                 id="onboarding-username"
-                className="pl-7"
+                className="border-0 shadow-none focus-visible:ring-0"
                 value={username}
                 onChange={(e) => handleUsernameChange(e.target.value)}
                 placeholder="username"
