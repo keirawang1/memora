@@ -45,6 +45,8 @@ type SettingsPage = 'menu' | 'theme' | 'library' | 'account';
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When set, opens directly to this page each time the dialog opens. */
+  initialPage?: SettingsPage;
   accentColor: string;
   themeSettings: AppThemeSettings;
   onThemePreview?: (settings: AppThemeSettings) => void;
@@ -168,6 +170,7 @@ function ThemeOption({
 export function SettingsDialog({
   open,
   onOpenChange,
+  initialPage,
   accentColor,
   themeSettings,
   onThemePreview,
@@ -189,7 +192,7 @@ export function SettingsDialog({
   usedCustomGenres = [],
   usedCustomMediaTypes = [],
 }: SettingsDialogProps) {
-  const [page, setPage] = useState<SettingsPage>('menu');
+  const [page, setPage] = useState<SettingsPage>(initialPage ?? 'menu');
   const [draftTheme, setDraftTheme] = useState<AppThemeSettings>(themeSettings);
   const [draftShowAllBoard, setDraftShowAllBoard] = useState(showAllBoard);
   const [draftPublicBoardsFriendsOnly, setDraftPublicBoardsFriendsOnly] = useState(
@@ -215,11 +218,13 @@ export function SettingsDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!open) {
-      setPage('menu');
-      onThemePreview?.(themeSettings);
+    if (open) {
+      setPage(initialPage ?? 'menu');
+      return;
     }
-  }, [open, themeSettings, onThemePreview]);
+    setPage('menu');
+    onThemePreview?.(themeSettings);
+  }, [open, initialPage, themeSettings, onThemePreview]);
 
   useEffect(() => {
     if (page === 'theme') {
@@ -623,6 +628,7 @@ export function SettingsDialog({
                   Custom options appear in Add and Edit Media dropdowns.
                 </p>
                 <Button
+                  id="onboarding-custom-genres"
                   variant="outline"
                   className="w-full justify-start"
                   onClick={() => setManageGenresOpen(true)}

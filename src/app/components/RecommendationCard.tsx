@@ -15,6 +15,8 @@ interface RecommendationCardProps {
   boards: Board[];
   added: boolean;
   onAdd: (item: DiscoveryItem, boardIds: string[]) => void | Promise<void>;
+  showReason?: boolean;
+  large?: boolean;
 }
 
 export function RecommendationCard({
@@ -22,6 +24,8 @@ export function RecommendationCard({
   boards,
   added,
   onAdd,
+  showReason = false,
+  large = false,
 }: RecommendationCardProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -54,7 +58,7 @@ export function RecommendationCard({
         <button
           type="button"
           onClick={() => setDetailOpen(true)}
-          className="aspect-square relative rounded-lg overflow-hidden mb-2 bg-muted/50 shrink-0 cursor-pointer hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={`${large ? 'aspect-[2/3]' : 'aspect-square'} relative rounded-lg overflow-hidden mb-2 bg-muted/50 shrink-0 cursor-pointer hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
           aria-label={`View details for ${item.title}`}
         >
           {item.imageUrl ? (
@@ -70,10 +74,13 @@ export function RecommendationCard({
           )}
         </button>
 
-        <h3 className="text-sm font-medium line-clamp-2 mb-1 min-h-[2.5rem]">{item.title}</h3>
-        <Badge variant="outline" className="text-xs mb-2 w-fit">
+        <h3 className={`${large ? 'text-base' : 'text-sm'} font-medium line-clamp-2 mb-1 min-h-[2.5rem]`}>{item.title}</h3>
+        <Badge variant="outline" className="text-xs mb-2 w-fit uppercase tracking-wide">
           {item.formatLabel}
         </Badge>
+        {showReason && item.reason ? (
+          <p className="text-xs text-muted-foreground line-clamp-3 mb-2">{item.reason}</p>
+        ) : null}
 
         <div className="mt-auto">
           {added ? (

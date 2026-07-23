@@ -68,6 +68,25 @@ async function pumpQueue(): Promise<void> {
       }
 
       if (res.status === 503 || res.status === 504) {
+        // One short retry after cooldown — Jikan flaps on these often
+        cooldownUntil = Date.now() + 2500;
+        await new Promise((r) => setTimeout(r, 2500));
+        lastRequestAt = Date.now();
+        const retryController = new AbortController();
+        const retryTimer = setTimeout(() => retryController.abort(), REQUEST_TIMEOUT_MS);
+        try {
+          const retry = await fetch(`${BASE}${job.path}`, { signal: retryController.signal });
+          if (retry.ok) {
+            const json = await retry.json();
+            writeResponseCache(job.path, json);
+            job.resolve(json);
+            continue;
+          }
+        } catch {
+          // fall through to reject
+        } finally {
+          clearTimeout(retryTimer);
+        }
         job.reject(new Error(`Jikan ${job.path}: ${res.status}`));
         continue;
       }
@@ -340,6 +359,9 @@ interface JikanDetailResponse {
 }
 
 export async function jikanFetchSynopsis(item: DiscoveryItem): Promise<string> {
+  if (item.source !== 'jikan' || !item.externalId) {
+    return 'No overview available.';
+  }
   const path =
     item.type === 'anime' ? `/anime/${item.externalId}` : `/manga/${item.externalId}`;
   try {

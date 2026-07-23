@@ -27,8 +27,73 @@ import {
   parseMalAnimeIdFromLink,
   parseMalMangaIdFromLink,
 } from '../services/jikan';
+import { tmdbTrendingMovies, tmdbTrendingTv } from '../services/tmdb';
 
 const ROW_COUNT = 5;
+const TRENDING_COUNT = 4;
+
+type CatalogMediaType = 'anime' | 'manga' | 'movie' | 'tv';
+
+function mapLibraryType(type: string): CatalogMediaType | null {
+  const t = type.trim().toLowerCase();
+  if (t === 'anime') return 'anime';
+  if (t === 'manga' || t === 'comic' || t === 'manhwa' || t === 'manhua' || t === 'light novel') {
+    return 'manga';
+  }
+  if (t === 'movie') return 'movie';
+  if (t === 'tv' || t === 'show' || t === 'series') return 'tv';
+  return null;
+}
+
+/** Allocate slots proportional to library mix, falling back to preferred media types. */
+export function allocatePreferredTypeSlots(
+  items: MediaItem[],
+  total: number,
+  preferredMediaTypes: string[] = [],
+): CatalogMediaType[] {
+  const counts = new Map<CatalogMediaType, number>();
+  for (const item of items) {
+    const t = mapLibraryType(item.type);
+    if (!t) continue;
+    counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  if (counts.size === 0) {
+    for (const raw of preferredMediaTypes) {
+      const t = mapLibraryType(raw);
+      if (!t) continue;
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  if (ranked.length === 0) {
+    return (['anime', 'manga', 'movie', 'tv'] as CatalogMediaType[]).slice(0, total);
+  }
+  const sum = ranked.reduce((acc, [, c]) => acc + c, 0);
+  const parts = ranked.map(([type, c]) => {
+    const exact = (c / sum) * total;
+    const floor = Math.floor(exact);
+    return { type, floor, rem: exact - floor };
+  });
+  let remaining = total - parts.reduce((acc, p) => acc + p.floor, 0);
+  for (const p of [...parts].sort((a, b) => b.rem - a.rem)) {
+    if (remaining <= 0) break;
+    p.floor += 1;
+    remaining -= 1;
+  }
+  const slots: CatalogMediaType[] = [];
+  for (const p of parts) {
+    for (let i = 0; i < p.floor; i++) slots.push(p.type);
+  }
+  return slots.slice(0, total);
+}
+
+function shuffleInPlace<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 
 const MIN_ACTIVE_ITEMS = 5;
 const MIN_GENRE_TAGGED_ITEMS = 3;
@@ -392,13 +457,81 @@ export async function fetchTrendingMangaRow(
   if (pool.length < ROW_COUNT) {
     pool = dedupeDiscoveryItems([...pool, ...(await jikanTopPublishingManga(25))]);
   }
-  if (pool.length < ROW_COUNT) {
-    pool = dedupeDiscoveryItems([
-      ...pool,
-      ...getMangaFallbackPool(25, printTypes),
-    ]);
-  }
   return takeUniqueItems(pool, ROW_COUNT, taken, items).slice(0, ROW_COUNT);
+}
+
+export async function fetchTrendingSection(
+  items: MediaItem[],
+  exclude: DiscoveryItem[] = [],
+  customMediaTypes: string[] = [],
+  preferredMediaTypes: string[] = [],
+): Promise<{ items: DiscoveryItem[]; printLabel: string }> {
+  const printTypes = resolvePreferredPrintTypes(items, customMediaTypes);
+  const slots = allocatePreferredTypeSlots(items, TRENDING_COUNT, preferredMediaTypes);
+  const taken = new Set(exclude.map((i) => normalizeTitle(i.title)));
+  const jikanTypes = preferredPrintTypesToJikan(printTypes);
+
+  const [animePool, mangaPool, moviePool, tvPool] = await Promise.all([
+    jikanSeasonNow(20)
+      .then(async (season) =>
+        season.length >= TRENDING_COUNT
+          ? season
+          : dedupeDiscoveryItems([...season, ...(await jikanTopAiringAnime(20))]),
+      )
+      .catch(() => [] as DiscoveryItem[]),
+    jikanPopularPrintMix(jikanTypes, 25)
+      .then(async (mix) =>
+        mix.length >= TRENDING_COUNT
+          ? mix
+          : dedupeDiscoveryItems([...mix, ...(await jikanTopPublishingManga(25))]),
+      )
+      .catch(() => [] as DiscoveryItem[]),
+    tmdbTrendingMovies(20).catch(() => [] as DiscoveryItem[]),
+    tmdbTrendingTv(20).catch(() => [] as DiscoveryItem[]),
+  ]);
+
+  const byType: Record<CatalogMediaType, DiscoveryItem[]> = {
+    anime: animePool,
+    manga: mangaPool,
+    movie: moviePool,
+    tv: tvPool,
+  };
+
+  const selected: DiscoveryItem[] = [];
+  const used = new Set<string>();
+
+  for (const t of slots) {
+    const next = byType[t].find((c) => {
+      const key = normalizeTitle(c.title);
+      return !used.has(key) && !taken.has(key);
+    });
+    if (next) {
+      used.add(normalizeTitle(next.title));
+      selected.push(next);
+    }
+  }
+
+  if (selected.length < TRENDING_COUNT) {
+    const filler = dedupeDiscoveryItems([
+      ...animePool,
+      ...mangaPool,
+      ...moviePool,
+      ...tvPool,
+    ]);
+    for (const item of filler) {
+      if (selected.length >= TRENDING_COUNT) break;
+      const key = normalizeTitle(item.title);
+      if (used.has(key) || taken.has(key)) continue;
+      if (items.some((m) => normalizeTitle(m.title) === key)) continue;
+      used.add(key);
+      selected.push(item);
+    }
+  }
+
+  return {
+    items: selected.slice(0, TRENDING_COUNT),
+    printLabel: formatPrintSectionLabel(printTypes),
+  };
 }
 
 export async function fetchRecommendedAnimeRow(
@@ -490,21 +623,6 @@ export async function fetchRecommendedPrimary(
   return { primary, seed, personalized };
 }
 
-export async function fetchTrendingSection(
-  items: MediaItem[],
-  exclude: DiscoveryItem[] = [],
-  customMediaTypes: string[] = [],
-): Promise<DiscoverySectionRows & { printLabel: string }> {
-  const printTypes = resolvePreferredPrintTypes(items, customMediaTypes);
-  const manga = await fetchTrendingMangaRow(items, exclude, printTypes);
-  const primary = await fetchPrimaryTrendingRow(items, [...exclude, ...manga]);
-  return {
-    primary,
-    manga,
-    printLabel: formatPrintSectionLabel(printTypes),
-  };
-}
-
 export async function fetchRecommendedSection(
   items: MediaItem[],
   lookupCache: Map<string, number | null>,
@@ -544,4 +662,83 @@ export async function fetchRecommendedSection(
     personalized,
     printLabel: formatPrintSectionLabel(printTypes),
   };
+}
+
+/** Popular live picks for cold-start / small libraries. */
+export async function fetchColdStartRecommendations(
+  preferredGenres: string[] = [],
+  preferredMediaTypes: string[] = [],
+  libraryItems: MediaItem[] = [],
+): Promise<DiscoveryItem[]> {
+  const slots = allocatePreferredTypeSlots(libraryItems, TRENDING_COUNT, preferredMediaTypes);
+  const malIds = memoraGenresToMal(preferredGenres);
+  const printTypes = resolvePreferredPrintTypes(libraryItems, []);
+  const jikanTypes = preferredPrintTypesToJikan(printTypes);
+
+  const [animePool, mangaPool, moviePool, tvPool] = await Promise.all([
+    (malIds.length > 0
+      ? jikanAnimeByGenres(malIds, 20).then(async (rows) =>
+          rows.length >= TRENDING_COUNT ? rows : dedupeDiscoveryItems([...rows, ...(await jikanTopAnime(20))]),
+        )
+      : jikanTopAnime(20)
+    ).catch(() => [] as DiscoveryItem[]),
+    (malIds.length > 0
+      ? jikanMangaByGenres(malIds, 20).then(async (rows) =>
+          rows.length >= TRENDING_COUNT
+            ? rows
+            : dedupeDiscoveryItems([...rows, ...(await jikanPopularPrintMix(jikanTypes, 20))]),
+        )
+      : jikanPopularPrintMix(jikanTypes, 20)
+    ).catch(() => [] as DiscoveryItem[]),
+    tmdbTrendingMovies(20).catch(() => [] as DiscoveryItem[]),
+    tmdbTrendingTv(20).catch(() => [] as DiscoveryItem[]),
+  ]);
+
+  const byType: Record<CatalogMediaType, DiscoveryItem[]> = {
+    anime: shuffleInPlace([...animePool]),
+    manga: shuffleInPlace([...mangaPool]),
+    movie: shuffleInPlace([...moviePool]),
+    tv: shuffleInPlace([...tvPool]),
+  };
+
+  const taken = new Set(libraryItems.map((m) => normalizeTitle(m.title)));
+  const selected: DiscoveryItem[] = [];
+  const used = new Set<string>();
+  const genreHint = preferredGenres[0];
+
+  for (const t of slots) {
+    const next = byType[t].find((c) => {
+      const key = normalizeTitle(c.title);
+      return !used.has(key) && !taken.has(key);
+    });
+    if (next) {
+      used.add(normalizeTitle(next.title));
+      selected.push({
+        ...next,
+        reason: genreHint
+          ? `Popular pick for fans of ${genreHint}`
+          : 'A popular pick for your taste profile',
+      });
+    }
+  }
+
+  if (selected.length < TRENDING_COUNT) {
+    const filler = shuffleInPlace(
+      dedupeDiscoveryItems([...animePool, ...mangaPool, ...moviePool, ...tvPool]),
+    );
+    for (const item of filler) {
+      if (selected.length >= TRENDING_COUNT) break;
+      const key = normalizeTitle(item.title);
+      if (used.has(key) || taken.has(key)) continue;
+      used.add(key);
+      selected.push({
+        ...item,
+        reason: genreHint
+          ? `Popular pick for fans of ${genreHint}`
+          : 'A popular pick for your taste profile',
+      });
+    }
+  }
+
+  return selected.slice(0, TRENDING_COUNT);
 }

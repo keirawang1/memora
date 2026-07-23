@@ -26,6 +26,7 @@ interface AddMediaDialogProps {
   currentBoardId?: string;
   customGenres: string[];
   customMediaTypes: string[];
+  onOpenChange?: (open: boolean) => void;
 }
 
 const watchStatuses: WatchStatus[] = ['completed', 'in-progress', 'not-started', 'dropped'];
@@ -36,6 +37,7 @@ export function AddMediaDialog({
   currentBoardId,
   customGenres,
   customMediaTypes,
+  onOpenChange,
 }: AddMediaDialogProps) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -50,6 +52,11 @@ export function AddMediaDialog({
   const [dateStarted, setDateStarted] = useState('');
   const [dateCompleted, setDateCompleted] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    onOpenChange?.(next);
+  };
 
   useEffect(() => {
     if (open) {
@@ -97,7 +104,7 @@ export function AddMediaDialog({
       setSelectedBoards([]);
       setDateStarted('');
       setDateCompleted('');
-      setOpen(false);
+      handleOpenChange(false);
     } catch {
       // Error toast handled in App.handleAddMedia
     } finally {
@@ -116,13 +123,13 @@ export function AddMediaDialog({
   );
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <button
           id="onboarding-add-media"
           type="button"
           style={accentButtonStyle}
-          className="rounded-full fixed bottom-6 right-6 h-14 w-14 shadow-lg z-50 hover:opacity-90 transition-opacity flex items-center justify-center"
+          className="rounded-full fixed bottom-6 right-6 h-14 w-14 shadow-lg z-[90] hover:opacity-90 transition-opacity flex items-center justify-center"
         >
           <Plus className="w-6 h-6" />
         </button>

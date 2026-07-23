@@ -61,6 +61,10 @@ interface FriendsPageProps {
   friends: Friend[];
   currentUser: User;
   accentColor?: string;
+  /** Local-only mode: no Supabase calls for feed/search/posts. */
+  demoMode?: boolean;
+  demoPosts?: FeedPost[];
+  demoSearchUsers?: User[];
   onAddFriend: (user: User) => void;
   onAcceptFriend: (friendId: string) => void;
   onRejectFriend: (friendId: string) => void;
@@ -110,7 +114,9 @@ function UserIdentityButton({
     >
       <Avatar>
         <AvatarImage src={user.avatar} alt={user.username} className="object-cover" />
-        <AvatarFallback>{user.username.slice(0, 1).toUpperCase()}</AvatarFallback>
+        <AvatarFallback>
+          {(user.displayName.trim().slice(0, 2) || user.username.slice(0, 2) || '??').toUpperCase()}
+        </AvatarFallback>
       </Avatar>
       <div className="min-w-0">
         <div className="truncate">
@@ -170,9 +176,11 @@ function PostImagePreview({ src, alt = '' }: { src: string; alt?: string }) {
 function PostComposer({
   currentUser,
   onPosted,
+  demoMode = false,
 }: {
   currentUser: User;
   onPosted: (post: FeedPost) => void;
+  demoMode?: boolean;
 }) {
   const [body, setBody] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -197,8 +205,22 @@ function PostComposer({
     if (!trimmed || submitting) return;
     setSubmitting(true);
     try {
-      const post = await createPost(currentUser.id, trimmed, imagePreview ?? undefined);
-      onPosted(post);
+      if (demoMode) {
+        onPosted({
+          id: `demo-post-${Date.now()}`,
+          userId: currentUser.id,
+          body: trimmed,
+          imageUrl: imagePreview ?? undefined,
+          createdAt: new Date().toISOString(),
+          author: currentUser,
+          commentCount: 0,
+          likeCount: 0,
+          likedByMe: false,
+        });
+      } else {
+        const post = await createPost(currentUser.id, trimmed, imagePreview ?? undefined);
+        onPosted(post);
+      }
       setBody('');
       setImagePreview(null);
     } catch (err) {
@@ -212,10 +234,11 @@ function PostComposer({
     <Card>
       <CardContent className="pt-6 space-y-3">
         <div className="flex items-center gap-3">
-          <Avatar className="w-10 h-10">
-            <AvatarImage src={currentUser.avatar} alt={currentUser.username} className="object-cover" />
-            <AvatarFallback>{currentUser.username.slice(0, 1).toUpperCase()}</AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            displayName={currentUser.displayName}
+            avatar={currentUser.avatar}
+            size="sm"
+          />
           <span className="text-sm text-muted-foreground">Share with friends</span>
         </div>
         <Textarea
@@ -285,7 +308,9 @@ function PostComposer({
 function PostCard({
   post,
   currentUserId,
+  currentUser,
   accentColor,
+  demoMode = false,
   onViewProfile,
   onCommentCountChange,
   onDeleted,
@@ -293,7 +318,9 @@ function PostCard({
 }: {
   post: FeedPost;
   currentUserId: string;
+  currentUser?: User;
   accentColor?: string;
+  demoMode?: boolean;
   onViewProfile: (userId: string) => void;
   onCommentCountChange: (postId: string, delta: number) => void;
   onDeleted: (postId: string) => void;
@@ -316,6 +343,11 @@ function PostCard({
     const next = !commentsOpen;
     setCommentsOpen(next);
     if (next && !commentsLoaded) {
+      if (demoMode) {
+        setComments([]);
+        setCommentsLoaded(true);
+        return;
+      }
       setLoadingComments(true);
       try {
         const loaded = await fetchPostComments(post.id);
@@ -332,11 +364,35 @@ function PostCard({
     if (!trimmed || submittingComment) return;
     setSubmittingComment(true);
     try {
-      const comment = await createPostComment(post.id, currentUserId, trimmed);
-      setComments((prev) => [...prev, comment]);
-      setCommentText('');
-      if (!commentsLoaded) setCommentsLoaded(true);
-      onCommentCountChange(post.id, 1);
+      if (demoMode) {
+        const author =
+          currentUser ??
+          ({
+            id: currentUserId,
+            username: 'you',
+            displayName: 'You',
+          } satisfies User);
+        setComments((prev) => [
+          ...prev,
+          {
+            id: `demo-comment-${Date.now()}`,
+            postId: post.id,
+            userId: currentUserId,
+            body: trimmed,
+            createdAt: new Date().toISOString(),
+            author,
+          },
+        ]);
+        setCommentText('');
+        if (!commentsLoaded) setCommentsLoaded(true);
+        onCommentCountChange(post.id, 1);
+      } else {
+        const comment = await createPostComment(post.id, currentUserId, trimmed);
+        setComments((prev) => [...prev, comment]);
+        setCommentText('');
+        if (!commentsLoaded) setCommentsLoaded(true);
+        onCommentCountChange(post.id, 1);
+      }
     } finally {
       setSubmittingComment(false);
     }
@@ -348,8 +404,13 @@ function PostCard({
     if (liking) return;
     setLiking(true);
     try {
-      const result = await togglePostLike(post.id);
-      onLikeChange(post.id, result.likeCount, result.liked);
+      if (demoMode) {
+        const likedByMe = !post.likedByMe;
+        onLikeChange(post.id, post.likeCount + (likedByMe ? 1 : -1), likedByMe);
+      } else {
+        const result = await togglePostLike(post.id);
+        onLikeChange(post.id, result.likeCount, result.liked);
+      }
     } finally {
       setLiking(false);
     }
@@ -359,7 +420,9 @@ function PostCard({
     if (deleting) return;
     setDeleting(true);
     try {
-      await deletePost(post.id);
+      if (!demoMode) {
+        await deletePost(post.id);
+      }
       setDeletePostOpen(false);
       onDeleted(post.id);
     } finally {
@@ -371,7 +434,9 @@ function PostCard({
     if (!commentPendingDelete || deletingComment) return;
     setDeletingComment(true);
     try {
-      await deletePostComment(commentPendingDelete.id);
+      if (!demoMode) {
+        await deletePostComment(commentPendingDelete.id);
+      }
       setComments((prev) => prev.filter((c) => c.id !== commentPendingDelete.id));
       onCommentCountChange(post.id, -1);
       setCommentPendingDelete(null);
@@ -596,17 +661,22 @@ function PostCard({
 function FriendsFeed({
   currentUser,
   accentColor,
+  demoMode = false,
+  initialPosts = [],
   onViewProfile,
 }: {
   currentUser: User;
   accentColor?: string;
+  demoMode?: boolean;
+  initialPosts?: FeedPost[];
   onViewProfile: (userId: string) => void;
 }) {
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [posts, setPosts] = useState<FeedPost[]>(() => (demoMode ? initialPosts : []));
+  const [loading, setLoading] = useState(!demoMode);
   const [loadError, setLoadError] = useState(false);
 
   const loadPosts = async () => {
+    if (demoMode) return;
     setLoadError(false);
     try {
       const feed = await fetchFeedPosts();
@@ -649,7 +719,7 @@ function FriendsFeed({
 
   return (
     <div className="space-y-4">
-      <PostComposer currentUser={currentUser} onPosted={handlePosted} />
+      <PostComposer currentUser={currentUser} onPosted={handlePosted} demoMode={demoMode} />
       {loading && (
         <div className="flex justify-center py-8 text-muted-foreground">
           <Loader2 className="w-6 h-6 animate-spin" />
@@ -670,7 +740,9 @@ function FriendsFeed({
           key={post.id}
           post={post}
           currentUserId={currentUser.id}
+          currentUser={currentUser}
           accentColor={accentColor}
+          demoMode={demoMode}
           onViewProfile={onViewProfile}
           onCommentCountChange={handleCommentCountChange}
           onDeleted={handleDeleted}
@@ -684,6 +756,8 @@ function FriendsFeed({
 function ManageFriends({
   friends,
   currentUserId,
+  demoMode = false,
+  demoSearchUsers = [],
   onAddFriend,
   onAcceptFriend,
   onRejectFriend,
@@ -692,6 +766,8 @@ function ManageFriends({
 }: {
   friends: Friend[];
   currentUserId: string;
+  demoMode?: boolean;
+  demoSearchUsers?: User[];
   onAddFriend: (user: User) => void;
   onAcceptFriend: (friendId: string) => void;
   onRejectFriend: (friendId: string) => void;
@@ -731,8 +807,32 @@ function ManageFriends({
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          const results = await searchUsersByUsername(query, currentUserId);
-          setSearchResults(results);
+          if (demoMode) {
+            const q = query.toLowerCase();
+            const known = new Map<string, User>();
+            for (const u of demoSearchUsers) known.set(u.id, u);
+            for (const f of friends) known.set(f.user.id, f.user);
+            const results = [...known.values()]
+              .filter(
+                (u) =>
+                  u.id !== currentUserId &&
+                  (u.username.toLowerCase().includes(q) ||
+                    u.displayName.toLowerCase().includes(q)),
+              )
+              .map(
+                (u): PublicUser => ({
+                  id: u.id,
+                  username: u.username,
+                  displayName: u.displayName,
+                  avatar: u.avatar,
+                  bio: u.bio,
+                }),
+              );
+            setSearchResults(results);
+          } else {
+            const results = await searchUsersByUsername(query, currentUserId);
+            setSearchResults(results);
+          }
         } catch {
           setSearchResults([]);
         } finally {
@@ -742,7 +842,7 @@ function ManageFriends({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, currentUserId]);
+  }, [searchQuery, currentUserId, demoMode, demoSearchUsers, friends]);
 
   const sentRequestUserIds = useMemo(
     () => new Set(sentRequests.map((f) => f.user.id)),
@@ -955,6 +1055,9 @@ export function FriendsPage({
   friends,
   currentUser,
   accentColor,
+  demoMode = false,
+  demoPosts = [],
+  demoSearchUsers = [],
   onAddFriend,
   onAcceptFriend,
   onRejectFriend,
@@ -996,12 +1099,16 @@ export function FriendsPage({
         <FriendsFeed
           currentUser={currentUser}
           accentColor={accentColor}
+          demoMode={demoMode}
+          initialPosts={demoPosts}
           onViewProfile={onViewUserProfile}
         />
       ) : (
         <ManageFriends
           friends={friends}
           currentUserId={currentUser.id}
+          demoMode={demoMode}
+          demoSearchUsers={demoSearchUsers}
           onAddFriend={onAddFriend}
           onAcceptFriend={onAcceptFriend}
           onRejectFriend={onRejectFriend}

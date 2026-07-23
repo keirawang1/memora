@@ -27,7 +27,7 @@ import type { MediaItem, Friend, Board, User } from './app/types/media';
 import { Library, User as UserIcon, Users, Sparkles, Settings, LogOut } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './app/components/ui/dropdown-menu';
-import logoImage from './assets/logo.png';
+import { BrandMark } from './app/components/BrandMark';
 import { supabase } from './app/supabase/client';
 import { createBoard, fetchLibrary, updateBoard, deleteBoard, updateBoardMediaOrder } from './app/supabase/boards';
 import {
@@ -60,12 +60,15 @@ import {
   updateUserBoardSort,
   updateUserMediaSort,
   getUserOnboardingState,
-  saveOnboardingGenres,
+  saveOnboardingPreferences,
   completeOnboarding,
 } from './app/supabase/users';
 import type { SortMode } from './app/types/sort';
 import { AuthPage } from './app/components/AuthPage';
+import { LandingPage } from './app/components/LandingPage';
+import { DemoApp } from './app/components/DemoApp';
 import { OnboardingGenrePage } from './app/components/OnboardingGenrePage';
+import { OnboardingProfilePage } from './app/components/OnboardingProfilePage';
 import { OnboardingTour } from './app/components/OnboardingTour';
 import {
   applyAppTheme,
@@ -74,10 +77,13 @@ import {
 } from './app/utils/appTheme';
 import {
   APP_ROUTES,
+  getAuthModeFromPath,
   getBoardIdFromPath,
   getTabFromPath,
   getUserIdFromPath,
+  isDemoPath,
   isKnownAppPath,
+  isLandingPath,
   isOnboardingPath,
   isProfilePath,
   isPublicAuthPath,
@@ -127,8 +133,12 @@ function App() {
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
   const [onboardingCompleted, setOnboardingCompleted] = useState(true);
   const [preferredGenres, setPreferredGenres] = useState<string[]>([]);
+  const [preferredMediaTypes, setPreferredMediaTypes] = useState<string[]>([]);
+  const [onboardingPreferencesSet, setOnboardingPreferencesSet] = useState(true);
+  const [onboardingProfileDone, setOnboardingProfileDone] = useState(true);
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
   const [showOnboardingTour, setShowOnboardingTour] = useState(false);
+  const [addMediaDialogOpen, setAddMediaDialogOpen] = useState(false);
   const authedUserIdRef = useRef<string | null>(null);
   const libraryLoadingRef = useRef(false);
 
@@ -163,6 +173,9 @@ function App() {
     setUser(createDefaultUser());
     setOnboardingCompleted(true);
     setPreferredGenres([]);
+    setPreferredMediaTypes([]);
+    setOnboardingPreferencesSet(true);
+    setOnboardingProfileDone(true);
     setOnboardingLoaded(false);
     setShowOnboardingTour(false);
   };
@@ -183,19 +196,18 @@ function App() {
     if (isAuthenticated) return;
     // Don't strip Supabase confirm/recovery tokens via client navigation.
     if (hasAuthCallbackParams()) return;
-    if (location.pathname === APP_ROUTES.resetPassword) {
-      navigate(APP_ROUTES.signIn, { replace: true });
-      return;
-    }
+    // Signed-out default is the landing page. Auth forms + demo stay reachable.
     if (isPublicAuthPath(location.pathname)) return;
-    navigate(APP_ROUTES.signIn, { replace: true });
+    if (isLandingPath(location.pathname)) return;
+    if (isDemoPath(location.pathname)) return;
+    navigate(APP_ROUTES.home, { replace: true });
   }, [authChecking, isAuthenticated, passwordRecoveryPending, location.pathname, navigate]);
 
   useEffect(() => {
     if (passwordRecoveryPending) return;
     if (!isAuthenticated || !onboardingLoaded) return;
     if (!onboardingCompleted) {
-      if (preferredGenres.length === 0) {
+      if (!onboardingPreferencesSet) {
         if (!isOnboardingPath(location.pathname)) {
           navigate(APP_ROUTES.onboarding, { replace: true });
         }
@@ -206,7 +218,7 @@ function App() {
       }
       return;
     }
-    if (location.pathname === '/') {
+    if (isLandingPath(location.pathname) || isDemoPath(location.pathname)) {
       navigate(APP_ROUTES.library, { replace: true });
       return;
     }
@@ -221,7 +233,7 @@ function App() {
     isAuthenticated,
     onboardingLoaded,
     onboardingCompleted,
-    preferredGenres.length,
+    onboardingPreferencesSet,
     location.pathname,
     navigate,
     passwordRecoveryPending,
@@ -290,13 +302,22 @@ function App() {
         .then((onboarding) => {
           setOnboardingCompleted(onboarding.completed);
           setPreferredGenres(onboarding.preferredGenres);
-          if (!onboarding.completed && onboarding.preferredGenres.length > 0) {
+          setPreferredMediaTypes(onboarding.preferredMediaTypes);
+          setOnboardingPreferencesSet(onboarding.preferencesSet);
+          if (!onboarding.completed && onboarding.preferencesSet) {
+            setOnboardingProfileDone(true);
             setShowOnboardingTour(true);
+          } else if (onboarding.completed) {
+            setOnboardingProfileDone(true);
           }
+          // else: leave onboardingProfileDone as set by signup (false) or prior state
         })
         .catch(() => {
           setOnboardingCompleted(true);
           setPreferredGenres([]);
+          setPreferredMediaTypes([]);
+          setOnboardingPreferencesSet(true);
+          setOnboardingProfileDone(true);
         })
         .finally(() => setOnboardingLoaded(true)),
       fetchFriends(user.id)
@@ -350,6 +371,9 @@ function App() {
     if (isNewSignup) {
       setOnboardingCompleted(false);
       setPreferredGenres([]);
+      setPreferredMediaTypes([]);
+      setOnboardingPreferencesSet(false);
+      setOnboardingProfileDone(false);
       setOnboardingLoaded(false);
       setShowOnboardingTour(false);
     }
@@ -363,14 +387,66 @@ function App() {
     }
   };
 
-  const handleOnboardingGenresContinue = async (genres: string[]) => {
+  const handleOnboardingProfileContinue = async (data: {
+    username: string;
+    displayName: string;
+  }) => {
     try {
-      await saveOnboardingGenres(user.id, genres);
-      setPreferredGenres(genres);
-      setShowOnboardingTour(true);
-      navigate(APP_ROUTES.library, { replace: true });
+      if (data.username !== user.username) {
+        const profile = await updateUsername(user.id, data.username);
+        setUser((prev) => ({
+          ...prev,
+          username: profile.username,
+          displayName: data.displayName,
+        }));
+      } else {
+        setUser((prev) => ({ ...prev, displayName: data.displayName }));
+      }
+      if (data.displayName !== user.displayName) {
+        await updateUserProfile(user.id, {
+          displayName: data.displayName,
+          bio: user.bio ?? '',
+        });
+      }
+      setOnboardingProfileDone(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save profile';
+      toast.error(message);
+      throw error;
+    }
+  };
+
+  const handleOnboardingProfileSkip = () => {
+    setOnboardingProfileDone(true);
+  };
+
+  const finishPreferencesAndStartTour = async (
+    genres: string[],
+    mediaTypes: string[],
+  ) => {
+    await saveOnboardingPreferences(user.id, genres, mediaTypes);
+    setPreferredGenres(genres);
+    setPreferredMediaTypes(mediaTypes);
+    setOnboardingPreferencesSet(true);
+    setShowOnboardingTour(true);
+    navigate(APP_ROUTES.library, { replace: true });
+  };
+
+  const handleOnboardingGenresContinue = async (genres: string[], mediaTypes: string[]) => {
+    try {
+      await finishPreferencesAndStartTour(genres, mediaTypes);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save preferences';
+      toast.error(message);
+      throw error;
+    }
+  };
+
+  const handleOnboardingGenresSkip = async () => {
+    try {
+      await finishPreferencesAndStartTour([], []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to skip preferences';
       toast.error(message);
       throw error;
     }
@@ -381,6 +457,7 @@ function App() {
       await completeOnboarding(user.id);
       setOnboardingCompleted(true);
       setShowOnboardingTour(false);
+      setSettingsDialogOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to complete onboarding';
       toast.error(message);
@@ -391,7 +468,7 @@ function App() {
     await supabase.auth.signOut();
     setPasswordRecoveryPending(false);
     resetAuthState();
-    navigate(APP_ROUTES.signIn, { replace: true });
+    navigate(APP_ROUTES.home, { replace: true });
     toast.info('Signed out');
   };
 
@@ -482,7 +559,7 @@ function App() {
         if (event === 'SIGNED_OUT') {
           setPasswordRecoveryPending(false);
           resetAuthState();
-          navigate(APP_ROUTES.signIn, { replace: true });
+          navigate(APP_ROUTES.home, { replace: true });
           return;
         }
 
@@ -1038,10 +1115,23 @@ function App() {
   }
 
   if (!isAuthenticated) {
+    const authMode = getAuthModeFromPath(location.pathname);
+    // Only dedicated auth routes show AuthPage; everything else is the landing page.
+    if (authMode && authMode !== 'reset') {
+      return (
+        <>
+          <Toaster position="top-center" richColors />
+          <AuthPage onAuthSuccess={handleAuthSuccess} />
+        </>
+      );
+    }
+    if (isDemoPath(location.pathname)) {
+      return <DemoApp />;
+    }
     return (
       <>
         <Toaster position="top-center" richColors />
-        <AuthPage onAuthSuccess={handleAuthSuccess} />
+        <LandingPage />
       </>
     );
   }
@@ -1062,14 +1152,28 @@ function App() {
   if (
     onboardingLoaded &&
     !onboardingCompleted &&
-    preferredGenres.length === 0
+    !onboardingPreferencesSet
   ) {
+    if (!onboardingProfileDone) {
+      return (
+        <>
+          <Toaster position="top-center" richColors />
+          <OnboardingProfilePage
+            initialUsername={user.username}
+            initialDisplayName={user.displayName}
+            onContinue={handleOnboardingProfileContinue}
+            onSkip={handleOnboardingProfileSkip}
+          />
+        </>
+      );
+    }
     return (
       <>
         <Toaster position="top-center" richColors />
         <OnboardingGenrePage
           accentColor={accentColor}
           onContinue={handleOnboardingGenresContinue}
+          onSkip={handleOnboardingGenresSkip}
         />
       </>
     );
@@ -1085,16 +1189,10 @@ function App() {
             <button
               type="button"
               onClick={handleGoToLibrary}
-              className="flex items-center gap-2 rounded-lg hover:opacity-90 transition-opacity text-left"
+              className="rounded-lg hover:opacity-90 transition-opacity text-left"
               aria-label="Go to library"
             >
-              <div className="w-20 h-20 rounded-lg flex items-center justify-center">
-                <img src={logoImage} alt="Memora" className="w-20 h-20" />
-              </div>
-              <div>
-                <h2 className="tracking-tight">Memora</h2>
-                <p className="text-xs text-muted-foreground">Your taste, redefined.</p>
-              </div>
+              <BrandMark size="md" />
             </button>
             
             <div className="flex items-center gap-3">
@@ -1110,6 +1208,7 @@ function App() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
+                    id="onboarding-account-menu"
                     type="button"
                     className="rounded-full cursor-pointer hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label="Account menu"
@@ -1122,7 +1221,7 @@ function App() {
                     />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-48 z-[120]">
                   <DropdownMenuItem onClick={handleViewOwnProfile}>
                     <UserIcon className="w-4 h-4 mr-2" />
                     View Profile
@@ -1223,7 +1322,9 @@ function App() {
               userId={user.id}
               boards={boards}
               preferredGenres={preferredGenres}
+              preferredMediaTypes={preferredMediaTypes}
               customMediaTypes={customMediaTypes}
+              customGenres={customGenres}
               onAddMedia={handleAddMedia}
             />
           </TabsContent>
@@ -1250,6 +1351,7 @@ function App() {
         currentBoardId={boardIdFromUrl ?? undefined}
         customGenres={customGenres}
         customMediaTypes={customMediaTypes}
+        onOpenChange={setAddMediaDialogOpen}
       />
 
       <AddBoardDialog
@@ -1307,7 +1409,12 @@ function App() {
       />
 
       {showOnboardingTour && (
-        <OnboardingTour onComplete={() => void handleOnboardingTourComplete()} />
+        <OnboardingTour
+          onComplete={() => void handleOnboardingTourComplete()}
+          addBoardDialogOpen={addBoardDialogOpen}
+          addMediaDialogOpen={addMediaDialogOpen}
+          onEnsureLibrary={handleGoToLibrary}
+        />
       )}
     </div>
   );

@@ -7,80 +7,55 @@ import { TrendingUp, RefreshCw, WandSparklesIcon } from 'lucide-react';
 import { Button } from './ui/button';
 import { useDiscoveryFeed } from '../hooks/useDiscoveryFeed';
 import { normalizeTitle } from '../data/recommendationEngine';
+import { DEFAULT_GENRES } from '../data/mediaOptions';
 
 interface RecommendationsPageProps {
   mediaItems: MediaItem[];
   userId: string;
   boards: Board[];
   preferredGenres?: string[];
+  preferredMediaTypes?: string[];
   customMediaTypes?: string[];
+  customGenres?: string[];
+  /** Cap how many times the refresh button can hit live APIs (e.g. demo). */
+  maxRefreshes?: number;
+  /** Show a demo-mode limitations note. */
+  demoMode?: boolean;
   onAddMedia?: (
     media: Omit<MediaItem, 'id' | 'dateAdded'> & { id?: string },
     boardIds: string[],
   ) => void | Promise<void>;
 }
 
-function DiscoveryGridSkeleton({ printLabel = 'Manga' }: { printLabel?: string }) {
+function QuadGridSkeleton() {
   return (
-    <div className="flex flex-col gap-5">
-      {['Anime', printLabel].map((label) => (
-        <div key={label}>
-          <div className="h-3 w-24 bg-muted rounded mb-2 animate-pulse" />
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(12.5rem,1fr))] gap-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="animate-pulse flex flex-col">
-                <div className="aspect-square rounded-lg bg-muted mb-2" />
-                <div className="h-4 bg-muted rounded mb-1 min-h-[2.5rem]" />
-                <div className="h-3 bg-muted rounded w-2/3 mb-2" />
-                <div className="h-9 bg-muted rounded mt-auto" />
-              </div>
-            ))}
-          </div>
+    <div className="grid grid-cols-2 gap-4 sm:gap-5">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="animate-pulse flex flex-col">
+          <div className="aspect-[2/3] rounded-lg bg-muted mb-3" />
+          <div className="h-5 bg-muted rounded mb-2" />
+          <div className="h-3 bg-muted rounded w-1/3 mb-2" />
+          <div className="h-10 bg-muted rounded mt-auto" />
         </div>
       ))}
     </div>
   );
 }
 
-function DiscoveryScrollGrid({
-  primary,
-  manga,
-  printLabel,
+function QuadGrid({
+  items,
   boards,
   addedTitles,
   onAdd,
+  showReasons,
 }: {
-  primary: DiscoveryItem[];
-  manga: DiscoveryItem[];
-  printLabel: string;
+  items: DiscoveryItem[];
   boards: Board[];
   addedTitles: Set<string>;
   onAdd: (item: DiscoveryItem, boardIds: string[]) => void | Promise<void>;
+  showReasons?: boolean;
 }) {
-  const renderRow = (items: DiscoveryItem[], label: string) => (
-    <div>
-      <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">
-        {label}
-      </p>
-      {items.length > 0 ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(12.5rem,1fr))] gap-3 items-stretch">
-          {items.slice(0, 5).map((item) => (
-            <RecommendationCard
-              key={item.id}
-              item={item}
-              boards={boards}
-              added={addedTitles.has(normalizeTitle(item.title))}
-              onAdd={onAdd}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground py-2">Nothing here yet.</p>
-      )}
-    </div>
-  );
-
-  if (primary.length === 0 && manga.length === 0) {
+  if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-6 text-center">
         No recommendations available right now.
@@ -89,11 +64,18 @@ function DiscoveryScrollGrid({
   }
 
   return (
-    <div className="max-h-[560px] overflow-y-auto pr-1">
-      <div className="flex flex-col gap-5">
-        {renderRow(primary, 'Anime')}
-        {renderRow(manga, printLabel)}
-      </div>
+    <div className="grid grid-cols-2 gap-4 sm:gap-5 items-stretch">
+      {items.slice(0, 4).map((item) => (
+        <RecommendationCard
+          key={item.id}
+          item={item}
+          boards={boards}
+          added={addedTitles.has(normalizeTitle(item.title))}
+          onAdd={onAdd}
+          showReason={showReasons}
+          large
+        />
+      ))}
     </div>
   );
 }
@@ -103,23 +85,44 @@ export function RecommendationsPage({
   userId,
   boards,
   preferredGenres = [],
+  preferredMediaTypes = [],
   customMediaTypes = [],
+  customGenres = [],
+  maxRefreshes,
+  demoMode = false,
   onAddMedia,
 }: RecommendationsPageProps) {
-  const {
-    recommended,
-    recommendedManga,
-    trending,
-    trendingManga,
-    personalized,
-    printLabel,
-    recommendedLoading,
-    trendingLoading,
-    refreshRecommended,
-  } = useDiscoveryFeed(mediaItems, userId, preferredGenres, customMediaTypes);
+  const liveFeed = useDiscoveryFeed(
+    mediaItems,
+    userId,
+    preferredGenres,
+    customMediaTypes,
+    preferredMediaTypes,
+  );
+
+  const [refreshCount, setRefreshCount] = useState(0);
+  const refreshLimitReached =
+    typeof maxRefreshes === 'number' && refreshCount >= maxRefreshes;
+
+  const recommended = liveFeed.recommended;
+  const trending = liveFeed.trending;
+  const personalized = liveFeed.personalized;
+  const recommendedLoading = liveFeed.recommendedLoading;
+  const trendingLoading = liveFeed.trendingLoading;
+
+  const handleRefresh = () => {
+    if (refreshLimitReached || recommendedLoading) return;
+    setRefreshCount((n) => n + 1);
+    liveFeed.refreshRecommended();
+  };
+
   const [addedTitles, setAddedTitles] = useState<Set<string>>(() => {
     return new Set(mediaItems.map((m) => normalizeTitle(m.title)));
   });
+
+  const userGenres = new Set(
+    [...DEFAULT_GENRES, ...customGenres].map((g) => g.toLowerCase()),
+  );
 
   const handleAdd = async (item: DiscoveryItem, boardIds: string[]) => {
     if (!onAddMedia || boardIds.length === 0) return;
@@ -127,7 +130,7 @@ export function RecommendationsPage({
       {
         title: item.title,
         type: item.type,
-        genre: item.genres,
+        genre: item.genres.filter((g) => userGenres.has(g.toLowerCase())),
         status: 'not-started',
         imageUrl: item.imageUrl,
       },
@@ -136,12 +139,16 @@ export function RecommendationsPage({
     setAddedTitles((prev) => new Set([...prev, normalizeTitle(item.title)]));
   };
 
-  const totalRecommended = recommended.length + recommendedManga.length;
-  const totalTrending = trending.length + trendingManga.length;
-
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-semibold tracking-tight">For You</h1>
+    <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">For You</h1>
+        {demoMode && (
+          <p className="text-sm text-muted-foreground">
+            Recommendations are limited in demo mode — refreshes are capped.
+          </p>
+        )}
+      </div>
 
       <Card>
         <CardHeader className="pb-3">
@@ -149,36 +156,44 @@ export function RecommendationsPage({
             <CardTitle className="flex items-center gap-2 text-lg">
               <WandSparklesIcon className="w-5 h-5" />
               Recommended For You
-              {!recommendedLoading && totalRecommended > 0 
-              }
             </CardTitle>
             <Button
               variant="ghost"
               size="icon"
-              onClick={refreshRecommended}
-              disabled={recommendedLoading}
-              aria-label="Refresh recommendations"
+              onClick={handleRefresh}
+              disabled={recommendedLoading || refreshLimitReached}
+              aria-label={
+                refreshLimitReached
+                  ? 'Refresh limit reached'
+                  : 'Refresh recommendations'
+              }
+              title={
+                refreshLimitReached
+                  ? typeof maxRefreshes === 'number'
+                    ? `Refresh limit reached (${maxRefreshes})`
+                    : 'Refresh limit reached'
+                  : undefined
+              }
             >
               <RefreshCw className={`w-4 h-4 ${recommendedLoading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
           {!personalized && (
             <p className="text-sm text-muted-foreground">
-              Add more to your library for personalized picks
+              Start adding more media to your library for personalized picks!
             </p>
           )}
         </CardHeader>
         <CardContent>
           {recommendedLoading ? (
-            <DiscoveryGridSkeleton printLabel={printLabel} />
+            <QuadGridSkeleton />
           ) : (
-            <DiscoveryScrollGrid
-              primary={recommended}
-              manga={recommendedManga}
-              printLabel={printLabel}
+            <QuadGrid
+              items={recommended}
               boards={boards}
               addedTitles={addedTitles}
               onAdd={handleAdd}
+              showReasons
             />
           )}
         </CardContent>
@@ -187,20 +202,16 @@ export function RecommendationsPage({
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-          <TrendingUp className="w-5 h-5" />
+            <TrendingUp className="w-5 h-5" />
             Trending Now
-            {!trendingLoading && totalTrending > 0
-            }
           </CardTitle>
         </CardHeader>
         <CardContent>
           {trendingLoading ? (
-            <DiscoveryGridSkeleton printLabel={printLabel} />
+            <QuadGridSkeleton />
           ) : (
-            <DiscoveryScrollGrid
-              primary={trending}
-              manga={trendingManga}
-              printLabel={printLabel}
+            <QuadGrid
+              items={trending}
               boards={boards}
               addedTitles={addedTitles}
               onAdd={handleAdd}

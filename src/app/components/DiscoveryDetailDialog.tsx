@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DiscoveryItem } from '../types/discovery';
 import { jikanFetchSynopsis } from '../services/jikan';
+import { supabase } from '../supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,22 @@ interface DiscoveryDetailDialogProps {
   item: DiscoveryItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+async function fetchOverview(item: DiscoveryItem): Promise<string> {
+  if (item.catalogId) {
+    const { data } = await supabase
+      .from('media_catalog')
+      .select('synopsis')
+      .eq('id', item.catalogId)
+      .maybeSingle();
+    const text = (data as { synopsis?: string | null } | null)?.synopsis?.trim();
+    if (text) return text;
+  }
+  if (item.source === 'jikan') {
+    return jikanFetchSynopsis(item);
+  }
+  return 'No overview available.';
 }
 
 export function DiscoveryDetailDialog({
@@ -34,7 +51,7 @@ export function DiscoveryDetailDialog({
     let cancelled = false;
     setLoading(true);
 
-    jikanFetchSynopsis(item)
+    fetchOverview(item)
       .then((text) => {
         if (cancelled) return;
         setSynopsis(text);
@@ -83,6 +100,10 @@ export function DiscoveryDetailDialog({
               </Badge>
             ))}
           </div>
+
+          {item.reason ? (
+            <p className="text-sm text-muted-foreground mb-2 italic">{item.reason}</p>
+          ) : null}
 
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
             Overview

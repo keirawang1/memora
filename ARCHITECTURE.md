@@ -19,9 +19,15 @@ Memora is a single-page React application backed by Supabase. The frontend owns 
         ▼                              ▼
 ┌───────────────┐              ┌──────────────┐
 │   Supabase    │              │  Jikan API   │
-│ Auth + DB +   │              │  (discovery) │
-│   Storage     │              └──────────────┘
-└───────────────┘
+│ Auth+DB+Edge  │              │  (trending)  │
+│ Storage       │              └──────────────┘
+└───────┬───────┘              ┌──────────────┐
+        │                      │ RapidAPI     │
+        │ cron                 │ Movie Ratings│
+        ▼                      └──────────────┘
+┌──────────────────┐
+│ Supabase pg_cron │ sync-catalog / refresh-recs (batched Edge Fns)
+└──────────────────┘
 ```
 
 ## Component Hierarchy
@@ -101,6 +107,7 @@ Handlers call Supabase modules directly (no global store). `useMemo` derives sta
 | `users.ts` | Profiles, tag prefs, theme, username, account deletion |
 | `media.ts` | CRUD for media items, public board reads |
 | `boards.ts` | CRUD for boards, media ordering |
+| `recommendations.ts` | Read cached For You + invoke refresh Edge Function |
 | `allBoardSync.ts` | Keeps the system "All" board in sync |
 | `friends.ts` | Friend requests via RPC functions |
 | `posts.ts` | Social feed: posts, comments, likes |
@@ -118,6 +125,14 @@ Extends Supabase Auth. Key columns: `username`, `display_name`, `email`, `avatar
 ### `media`
 
 Per-user media items. Key columns: `media_id`, `user_id`, `title`, `type`, `status`, `rating`, `cover`, `genres[]`, `gallery[]`, `board_ids[]`, `notes`, `link`, `date_started`, `date_completed`, `created_at`, `updated_at`.
+
+### Recommendation tables
+
+| Table | Purpose |
+|-------|---------|
+| `media_catalog` | Global titles from Jikan / Movie Ratings + `embedding vector(768)` |
+| `user_recommendations` | Cached For You picks (JSONB) per user |
+| `recommendation_jobs` | Sync/embed/refresh job status |
 
 ### `boards`
 
@@ -153,20 +168,22 @@ All tables use RLS. Key policies:
 
 ## Recommendations
 
-The discovery system is client-side and does not persist to the database.
+Server pipeline (catalog + embeddings + LLM) with client UI over a DB cache.
 
 ```
-mediaItems → recommendationEngine.ts
-           → computeWeightedGenres / pickSeedItem
-           → jikan.ts (rate-limited fetch to api.jikan.moe/v4)
-           → DiscoveryItem[]
-           → discoveryCache.ts (sessionStorage, per-user)
-           → RecommendationsPage
+Jikan + TMDB
+  → media_catalog (+ local MiniLM embeddings / pgvector)
+  → preference vector from media.rating > 4
+  → match_media_catalog → ~50–100 candidates
+  → type-diverse top 5 + template reasons
+  → user_recommendations (24h TTL)
+  → RecommendationsPage / useDiscoveryFeed
 ```
 
-- **Personalized** — Uses completed/in-progress items with genres to fetch MAL recommendations and genre-based searches.
-- **Trending** — Fetches currently airing anime and recent manga regardless of library size.
-- **Add to library** — Discovery cards pre-fill `AddMediaDialog` fields and link to MAL.
+- **For You** — Reads `user_recommendations`; refresh calls Edge Function `refresh-recommendations`.
+- **Trending** — Still client-side Jikan seasons / popular print.
+- **Jobs** — Supabase `pg_cron` (free) invokes batched Edge Functions `sync-catalog` / `refresh-recs`. Optional local full sync via `services/recommendations`.
+- **Add to library** — Persists `link` from catalog external URL.
 
 ## Key User Flows
 

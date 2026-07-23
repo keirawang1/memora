@@ -1,4 +1,4 @@
-export type DiscoverySource = 'jikan';
+export type DiscoverySource = 'jikan' | 'movie_ratings' | 'tmdb';
 
 export interface DiscoveryItem {
   id: string;
@@ -10,6 +10,9 @@ export interface DiscoveryItem {
   genres: string[];
   link: string;
   formatLabel: string;
+  reason?: string;
+  sourceLikes?: string[];
+  catalogId?: string;
 }
 
 export interface DiscoverySeed {
@@ -27,9 +30,7 @@ export interface DiscoverySectionRows {
 
 export interface DiscoveryFeed {
   recommended: DiscoveryItem[];
-  recommendedManga: DiscoveryItem[];
   trending: DiscoveryItem[];
-  trendingManga: DiscoveryItem[];
   seed: DiscoverySeed | null;
   cacheKey: string;
 }

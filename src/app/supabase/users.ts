@@ -39,6 +39,9 @@ export interface UserTagPreferences {
 export interface UserOnboardingState {
   completed: boolean;
   preferredGenres: string[];
+  preferredMediaTypes: string[];
+  /** True once preferred_genres / preferred_media_types have been written (including empty skip). */
+  preferencesSet: boolean;
 }
 
 const DEFAULT_SORT_MODE: SortMode = 'alphabetical';
@@ -725,13 +728,18 @@ export async function getUserOnboardingState(
 ): Promise<UserOnboardingState> {
   const { data, error } = await supabase
     .from('users')
-    .select('onboarding_completed, preferred_genres')
+    .select('onboarding_completed, preferred_genres, preferred_media_types')
     .eq('user_id', authUserId)
     .maybeSingle();
 
   if (error) {
     if (isMissingColumnError(error)) {
-      return { completed: true, preferredGenres: [] };
+      return {
+        completed: true,
+        preferredGenres: [],
+        preferredMediaTypes: [],
+        preferencesSet: true,
+      };
     }
     throw error;
   }
@@ -739,21 +747,31 @@ export async function getUserOnboardingState(
   const row = data as {
     onboarding_completed?: boolean | null;
     preferred_genres?: string[] | null;
+    preferred_media_types?: string[] | null;
   } | null;
+
+  const preferencesSet =
+    row?.preferred_genres != null || row?.preferred_media_types != null;
 
   return {
     completed: row?.onboarding_completed ?? true,
     preferredGenres: row?.preferred_genres ?? [],
+    preferredMediaTypes: row?.preferred_media_types ?? [],
+    preferencesSet,
   };
 }
 
-export async function saveOnboardingGenres(
+export async function saveOnboardingPreferences(
   authUserId: string,
   preferredGenres: string[],
+  preferredMediaTypes: string[],
 ): Promise<void> {
   const { error } = await supabase
     .from('users')
-    .update({ preferred_genres: preferredGenres })
+    .update({
+      preferred_genres: preferredGenres,
+      preferred_media_types: preferredMediaTypes,
+    })
     .eq('user_id', authUserId);
 
   if (error) {
@@ -762,6 +780,14 @@ export async function saveOnboardingGenres(
     }
     throw error;
   }
+}
+
+/** @deprecated Prefer saveOnboardingPreferences */
+export async function saveOnboardingGenres(
+  authUserId: string,
+  preferredGenres: string[],
+): Promise<void> {
+  await saveOnboardingPreferences(authUserId, preferredGenres, []);
 }
 
 export async function completeOnboarding(authUserId: string): Promise<void> {

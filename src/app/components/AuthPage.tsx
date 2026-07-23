@@ -8,7 +8,7 @@ import { Button } from './ui/button';
 import { supabase } from '../supabase/client';
 import { ensureUserProfile } from '../supabase/users';
 import { toast } from 'sonner';
-import logoImage from '../../assets/logo.png';
+import { BrandMark } from './BrandMark';
 import { getPasswordResetRedirectUrl } from '../utils/authRecovery';
 import { getEmailConfirmRedirectUrl } from '../utils/authCallback';
 import {
@@ -17,6 +17,7 @@ import {
   recordAuthEmailSent,
 } from '../utils/authEmail';
 import {
+  APP_ROUTES,
   authModeToRoute,
   getAuthModeFromPath,
   type AuthMode,
@@ -360,15 +361,14 @@ export function AuthPage({
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-4">
-          <div className="flex justify-center">
-            <div className="w-24 h-24 rounded-lg flex items-center justify-center">
-              <img src={logoImage} alt="Memora" className="w-24 h-24" />
-            </div>
-          </div>
-          <div>
-            <h1 className="tracking-tight">Memora</h1>
-            <p className="text-muted-foreground">Your taste, redefined.</p>
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate(APP_ROUTES.home)}
+            className="mx-auto flex rounded-lg hover:opacity-90 transition-opacity"
+            aria-label="Back to Memora home"
+          >
+            <BrandMark size="lg" layout="stack" />
+          </button>
         </div>
 
         {mode === 'signin' && (

@@ -1,4 +1,7 @@
 export const APP_ROUTES = {
+  home: '/',
+  demo: '/demo',
+  demoLibraryBoard: (boardId: string) => `/demo/library/${boardId}`,
   signIn: '/sign-in',
   signUp: '/sign-up',
   forgotPassword: '/forgot-password',
@@ -44,12 +47,25 @@ export function getAuthModeFromPath(pathname: string): AuthMode | null {
   }
 }
 
+export function isLandingPath(pathname: string): boolean {
+  return pathname === APP_ROUTES.home;
+}
+
+export function isDemoPath(pathname: string): boolean {
+  return pathname === APP_ROUTES.demo || pathname.startsWith(`${APP_ROUTES.demo}/`);
+}
+
 export function isPublicAuthPath(pathname: string): boolean {
   return (
     pathname === APP_ROUTES.signIn ||
     pathname === APP_ROUTES.signUp ||
     pathname === APP_ROUTES.forgotPassword
   );
+}
+
+/** Routes reachable while signed out (landing + auth forms + demo). */
+export function isPublicUnauthedPath(pathname: string): boolean {
+  return isLandingPath(pathname) || isPublicAuthPath(pathname) || isDemoPath(pathname);
 }
 
 export function isSignInFlowPath(pathname: string): boolean {
