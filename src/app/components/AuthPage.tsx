@@ -25,24 +25,46 @@ import {
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" aria-hidden>
+    <svg className={className} viewBox="0 0 48 48" aria-hidden>
       <path
-        fill="#EA4335"
-        d="M12 10.2v3.6h5.1c-.2 1.2-.9 2.2-1.9 2.9l3.1 2.4c1.8-1.7 2.9-4.1 2.9-7 0-.7-.1-1.3-.2-1.9H12z"
+        fill="#FFC107"
+        d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
       />
       <path
-        fill="#34A853"
-        d="M6.6 14.3l-.5.4-1.8 1.4C5.7 18.4 8.6 20.4 12 20.4c2.1 0 3.9-.7 5.2-1.9l-3.1-2.4c-.9.6-2 .9-3.1.9-2.4 0-4.4-1.6-5.1-3.8z"
+        fill="#FF3D00"
+        d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"
       />
       <path
-        fill="#4A90E2"
-        d="M4.3 7.9C3.8 8.9 3.6 10 3.6 12s.2 3.1.7 4.1c0 .1 2.3-1.8 2.3-1.8-.1-.4-.2-.8-.2-1.3s.1-.9.2-1.3L4.3 7.9z"
+        fill="#4CAF50"
+        d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
       />
       <path
-        fill="#FBBC05"
-        d="M12 3.6c1.2 0 2.2.4 3.1 1.1l2.3-2.3C15.9 1.1 14.1.4 12 .4 8.6.4 5.7 2.4 4.3 5.5L6.6 7.3C7.6 5.2 9.6 3.6 12 3.6z"
+        fill="#1976D2"
+        d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
       />
     </svg>
+  );
+}
+
+function GoogleAuthButton({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-full border border-[#747775] bg-[#F8F9FA] px-4 py-2.5 text-sm font-medium text-[#1F1F1F] transition-colors hover:bg-[#F0F1F2] disabled:pointer-events-none disabled:opacity-50"
+    >
+      <GoogleIcon className="size-5 shrink-0" />
+      <span className="flex-1 text-center pr-5">{label}</span>
+    </button>
   );
 }
 
@@ -427,7 +449,7 @@ export function AuthPage({
             className="mx-auto flex rounded-lg hover:opacity-90 transition-opacity"
             aria-label="Back to Memora home"
           >
-            <BrandMark size="lg" layout="stack" />
+            <BrandMark size="lg" layout="stack" logoOffset />
           </button>
         </div>
 
@@ -484,16 +506,11 @@ export function AuthPage({
                 {isLoading ? 'Signing in...' : 'Sign In'}
               </Button>
               <AuthDivider />
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
+              <GoogleAuthButton
+                label="Continue with Google"
                 disabled={isLoading}
                 onClick={() => void handleGoogleAuth()}
-              >
-                <GoogleIcon className="size-4 mr-2" />
-                Continue with Google
-              </Button>
+              />
               <p className="text-xs text-muted-foreground text-center">
                 Don&apos;t have an account?{' '}
                 <button
@@ -508,10 +525,6 @@ export function AuthPage({
                 >
                   Create account
                 </button>
-              </p>
-              <p className="text-[11px] text-muted-foreground text-center leading-snug">
-                If you already signed up with email, Google will link to that account when the
-                email matches.
               </p>
             </CardContent>
           </Card>
@@ -644,16 +657,11 @@ export function AuthPage({
                 {isLoading ? 'Creating account...' : 'Create Account'}
               </Button>
               <AuthDivider />
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
+              <GoogleAuthButton
+                label="Continue with Google"
                 disabled={isLoading}
                 onClick={() => void handleGoogleAuth()}
-              >
-                <GoogleIcon className="size-4 mr-2" />
-                Sign up with Google
-              </Button>
+              />
               <p className="text-xs text-muted-foreground text-center">
                 Already have an account?{' '}
                 <button
@@ -668,10 +676,6 @@ export function AuthPage({
                 >
                   Sign in
                 </button>
-              </p>
-              <p className="text-[11px] text-muted-foreground text-center leading-snug">
-                If Google uses the same email as an existing Memora account, they&apos;ll be
-                linked automatically.
               </p>
             </CardContent>
           </Card>

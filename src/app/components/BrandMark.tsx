@@ -30,6 +30,8 @@ interface BrandMarkProps {
   showTagline?: boolean;
   /** Hide tagline below the `sm` breakpoint (landing header). */
   hideTaglineOnMobile?: boolean;
+  /** Nudge the book logo down slightly (auth pages). */
+  logoOffset?: boolean;
   className?: string;
 }
 
@@ -39,10 +41,17 @@ export function BrandMark({
   layout = 'row',
   showTagline = true,
   hideTaglineOnMobile = false,
+  logoOffset = false,
   className,
 }: BrandMarkProps) {
   const logo = (
-    <div className={cn('rounded-lg flex items-center justify-center shrink-0', logoSize[size])}>
+    <div
+      className={cn(
+        'rounded-lg flex items-center justify-center shrink-0',
+        logoSize[size],
+        logoOffset && 'translate-y-2',
+      )}
+    >
       <img src={logoImage} alt="Memora" className={cn(logoSize[size])} />
     </div>
   );
