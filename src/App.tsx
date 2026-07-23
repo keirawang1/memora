@@ -537,7 +537,11 @@ function App() {
       }
 
       try {
-        const { session, isSignupConfirm } = await settleAuthCallbackSession();
+        const { session, isSignupConfirm, oauthError } =
+          await settleAuthCallbackSession();
+        if (oauthError && mounted) {
+          toast.error(oauthError);
+        }
         if (session?.user && mounted) {
           await applySession(session, isSignupConfirm);
         }

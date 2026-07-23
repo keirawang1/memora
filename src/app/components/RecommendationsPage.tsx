@@ -29,13 +29,13 @@ interface RecommendationsPageProps {
 
 function QuadGridSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:gap-5">
+    <div className="grid grid-cols-4 gap-3 sm:gap-4">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="animate-pulse flex flex-col">
-          <div className="aspect-[2/3] rounded-lg bg-muted mb-3" />
-          <div className="h-5 bg-muted rounded mb-2" />
+          <div className="aspect-[2/3] rounded-lg bg-muted mb-2" />
+          <div className="h-4 bg-muted rounded mb-2" />
           <div className="h-3 bg-muted rounded w-1/3 mb-2" />
-          <div className="h-10 bg-muted rounded mt-auto" />
+          <div className="h-8 bg-muted rounded mt-auto" />
         </div>
       ))}
     </div>
@@ -64,7 +64,7 @@ function QuadGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:gap-5 items-stretch">
+    <div className="grid grid-cols-4 gap-3 sm:gap-4 items-stretch">
       {items.slice(0, 4).map((item) => (
         <RecommendationCard
           key={item.id}
@@ -73,7 +73,6 @@ function QuadGrid({
           added={addedTitles.has(normalizeTitle(item.title))}
           onAdd={onAdd}
           showReason={showReasons}
-          large
         />
       ))}
     </div>
@@ -140,7 +139,7 @@ export function RecommendationsPage({
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">For You</h1>
         {demoMode && (

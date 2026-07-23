@@ -58,7 +58,7 @@ export function RecommendationCard({
         <button
           type="button"
           onClick={() => setDetailOpen(true)}
-          className={`${large ? 'aspect-[2/3]' : 'aspect-square'} relative rounded-lg overflow-hidden mb-2 bg-muted/50 shrink-0 cursor-pointer hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+          className="aspect-[2/3] relative rounded-lg overflow-hidden mb-2 bg-muted/50 shrink-0 cursor-pointer hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`View details for ${item.title}`}
         >
           {item.imageUrl ? (
@@ -69,12 +69,12 @@ export function RecommendationCard({
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
-              <Image className="w-10 h-10 text-muted-foreground/40" />
+              <Image className={`${large ? 'w-10 h-10' : 'w-7 h-7'} text-muted-foreground/40`} />
             </div>
           )}
         </button>
 
-        <h3 className={`${large ? 'text-base' : 'text-sm'} font-medium line-clamp-2 mb-1 min-h-[2.5rem]`}>{item.title}</h3>
+        <h3 className={`${large ? 'text-base min-h-[2.5rem]' : 'text-sm min-h-[2.25rem]'} font-medium line-clamp-2 mb-1`}>{item.title}</h3>
         <Badge variant="outline" className="text-xs mb-2 w-fit uppercase tracking-wide">
           {item.formatLabel}
         </Badge>
@@ -84,14 +84,14 @@ export function RecommendationCard({
 
         <div className="mt-auto">
           {added ? (
-            <Button variant="outline" className="w-full" disabled>
+            <Button variant="outline" size={large ? 'default' : 'sm'} className="w-full" disabled>
               <Check className="w-4 h-4 mr-1" />
               Added
             </Button>
           ) : (
             <Popover open={addOpen} onOpenChange={setAddOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full">
+                <Button variant="outline" size={large ? 'default' : 'sm'} className="w-full">
                   <Plus className="w-4 h-4 mr-1" />
                   Add
                 </Button>

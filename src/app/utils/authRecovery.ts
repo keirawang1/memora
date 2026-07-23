@@ -25,5 +25,8 @@ export function clearAuthParamsFromUrl(): void {
   url.searchParams.delete('token_hash');
   url.searchParams.delete('type');
   url.searchParams.delete('next');
+  url.searchParams.delete('error');
+  url.searchParams.delete('error_code');
+  url.searchParams.delete('error_description');
   window.history.replaceState(null, '', `${url.pathname}${url.search}`);
 }
