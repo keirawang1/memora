@@ -22,27 +22,27 @@ export const DEMO_USER: User = {
 export const DEMO_SEARCHABLE_USERS: User[] = [
   {
     id: 'demo-user-alex',
-    username: 'alexchen',
-    displayName: 'Alex Chen',
-    bio: 'Film + anime nights',
+    username: 'betterthanletterboxd',
+    displayName: 'movie critic',
+    bio: 'performative cinephile',
   },
   {
     id: 'demo-user-sam',
-    username: 'samrivera',
-    displayName: 'Sam Rivera',
-    bio: 'Always reading something',
+    username: 'gojoluvr',
+    displayName: 'the goat 👑',
+    bio: 'hollow purple',
   },
   {
     id: 'demo-user-jordan',
-    username: 'jordanlee',
-    displayName: 'Jordan Lee',
-    bio: 'Sci-fi forever',
+    username: 'betatester',
+    displayName: 'keira',
+    bio: 'sign up now',
   },
   {
     id: 'demo-user-morgan',
-    username: 'morgank',
-    displayName: 'Morgan K',
-    bio: 'Art house & classics',
+    username: 'thankyouforthesupport',
+    displayName: 'hey',
+    bio: 'if you made it this far congrats',
   },
 ];
 
@@ -238,7 +238,7 @@ export function createDemoFeedPosts(): FeedPost[] {
     {
       id: 'demo-post-1',
       userId: 'demo-user-alex',
-      body: 'I can\'t life, my eyes got misty after watching The Wild Robot.',
+      body: 'I can\'t lie, my eyes got misty after watching The Wild Robot.',
       imageUrl: wildRobotPost,
       createdAt: new Date(now - 3 * 3600000).toISOString(),
       author: DEMO_SEARCHABLE_USERS[0],
