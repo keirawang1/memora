@@ -216,21 +216,20 @@ export function SettingsDialog({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const committedThemeRef = useRef(themeSettings);
 
   useEffect(() => {
     if (open) {
+      committedThemeRef.current = themeSettings;
       setPage(initialPage ?? 'menu');
+      setDraftTheme(themeSettings);
       return;
     }
     setPage('menu');
-    onThemePreview?.(themeSettings);
-  }, [open, initialPage, themeSettings, onThemePreview]);
-
-  useEffect(() => {
-    if (page === 'theme') {
-      setDraftTheme(themeSettings);
-    }
-  }, [page, themeSettings]);
+    onThemePreview?.(committedThemeRef.current);
+    // Previewing a theme updates parent `themeSettings`; do not reset the page when that happens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialPage]);
 
   useEffect(() => {
     if (page === 'library') {
@@ -314,8 +313,8 @@ export function SettingsDialog({
 
   const handleBack = () => {
     if (page === 'theme') {
-      onThemePreview?.(themeSettings);
-      setDraftTheme(themeSettings);
+      onThemePreview?.(committedThemeRef.current);
+      setDraftTheme(committedThemeRef.current);
     }
     if (page === 'library') {
       setDraftShowAllBoard(showAllBoard);
@@ -336,6 +335,7 @@ export function SettingsDialog({
     setSavingTheme(true);
     try {
       await onSaveTheme(draftTheme);
+      committedThemeRef.current = draftTheme;
       setPage('menu');
     } finally {
       setSavingTheme(false);
