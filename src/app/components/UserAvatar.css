@@ -1,0 +1,11 @@
+.user-avatar-fallback {
+  color: #ffffff;
+}
+
+html.dark .user-avatar-fallback,
+.dark .user-avatar-fallback,
+html.dark .user-avatar-fallback *,
+.dark .user-avatar-fallback * {
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+}

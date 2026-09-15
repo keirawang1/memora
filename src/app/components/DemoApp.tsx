@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { LibraryPage } from './LibraryPage';
@@ -121,6 +121,13 @@ export function DemoApp() {
   );
 
   const go = (path: string) => navigate(appPathToDemoPath(path));
+
+  const handleEnsureLibrary = useCallback(() => {
+    if (getTabFromPath(appPath) === 'library' && !getBoardIdFromPath(appPath) && !isProfilePath(appPath)) {
+      return;
+    }
+    navigate(appPathToDemoPath(APP_ROUTES.library));
+  }, [appPath, navigate]);
 
   const handleExitDemo = () => {
     navigate(APP_ROUTES.home);
@@ -297,14 +304,14 @@ export function DemoApp() {
 
       <div className="border-b">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between py-3">
+          <div className="flex items-center justify-between py-2.5">
             <button
               type="button"
               onClick={() => go(APP_ROUTES.library)}
-              className="rounded-lg hover:opacity-90 transition-opacity text-left"
+              className="rounded-lg hover:opacity-90 transition-opacity text-left font-normal"
               aria-label="Go to library"
             >
-              <BrandMark size="md" />
+              <BrandMark size="sm" hideTaglineOnMobile />
             </button>
 
             <div className="flex items-center gap-3">
@@ -559,7 +566,7 @@ export function DemoApp() {
           onComplete={() => setShowOnboardingTour(false)}
           addBoardDialogOpen={addBoardDialogOpen}
           addMediaDialogOpen={addMediaDialogOpen}
-          onEnsureLibrary={() => go(APP_ROUTES.library)}
+          onEnsureLibrary={handleEnsureLibrary}
         />
       )}
     </div>

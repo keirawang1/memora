@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { getAvatarDisplayUrl } from '../supabase/storage';
 import { cn } from './ui/utils';
+import { normalizeAccentColor } from '../utils/accentColor';
+import './UserAvatar.css';
 
 type UserAvatarSize = 'xs' | 'sm' | 'lg' | 'xl';
 
@@ -32,6 +34,7 @@ export function UserAvatar({
   const { root, text } = sizeConfig[size];
   const imageSrc = getAvatarDisplayUrl(avatar);
   const [imgError, setImgError] = useState(false);
+  const chip = normalizeAccentColor(accentColor);
 
   useEffect(() => {
     setImgError(false);
@@ -48,12 +51,8 @@ export function UserAvatar({
         />
       ) : null}
       <AvatarFallback
-        className={cn('size-full rounded-full', text)}
-        style={
-          accentColor
-            ? { backgroundColor: accentColor, color: '#fff' }
-            : undefined
-        }
+        className={cn('user-avatar-fallback size-full rounded-full', text)}
+        style={{ backgroundColor: chip }}
       >
         {initials}
       </AvatarFallback>

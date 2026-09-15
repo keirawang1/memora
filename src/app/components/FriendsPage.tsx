@@ -15,7 +15,6 @@ import {
 } from '../supabase/posts';
 import { UserAvatar } from './UserAvatar';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
@@ -112,12 +111,11 @@ function UserIdentityButton({
       onClick={() => onViewProfile(user.id)}
       className="flex items-center gap-3 min-w-0 text-left rounded-md hover:bg-muted/60 transition-colors p-1 -m-1"
     >
-      <Avatar>
-        <AvatarImage src={user.avatar} alt={user.username} className="object-cover" />
-        <AvatarFallback>
-          {(user.displayName.trim().slice(0, 2) || user.username.slice(0, 2) || '??').toUpperCase()}
-        </AvatarFallback>
-      </Avatar>
+      <UserAvatar
+        displayName={user.displayName || user.username}
+        avatar={user.avatar}
+        size="sm"
+      />
       <div className="min-w-0">
         <div className="truncate">
           {user.displayName}{' '}
@@ -239,7 +237,6 @@ function PostComposer({
             avatar={currentUser.avatar}
             size="sm"
           />
-          <span className="text-sm text-muted-foreground">Share with friends</span>
         </div>
         <Textarea
           placeholder="What's on your mind?"

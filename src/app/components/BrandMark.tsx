@@ -14,7 +14,7 @@ const logoSize: Record<BrandMarkSize, string> = {
 const titleSize: Record<BrandMarkSize, string> = {
   sm: 'text-base font-medium',
   md: 'text-base font-medium',
-  lg: 'text-2xl sm:text-3xl font-semibold',
+  lg: 'text-2xl sm:text-3xl font-medium',
 };
 
 const taglineSize: Record<BrandMarkSize, string> = {

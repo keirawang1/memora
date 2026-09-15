@@ -446,7 +446,7 @@ export function AuthPage({
           <button
             type="button"
             onClick={() => navigate(APP_ROUTES.home)}
-            className="mx-auto flex rounded-lg hover:opacity-90 transition-opacity"
+            className="mx-auto flex rounded-lg hover:opacity-90 transition-opacity font-normal"
             aria-label="Back to Memora home"
           >
             <BrandMark size="lg" layout="stack" logoOffset />

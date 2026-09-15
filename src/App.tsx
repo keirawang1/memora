@@ -939,6 +939,7 @@ function App() {
   };
 
   const handleGoToLibrary = () => {
+    if (location.pathname === APP_ROUTES.library) return;
     navigate(APP_ROUTES.library);
   };
 
@@ -1197,14 +1198,14 @@ function App() {
       
       <div className="border-b">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between py-4">
+          <div className="flex items-center justify-between py-2.5">
             <button
               type="button"
               onClick={handleGoToLibrary}
-              className="rounded-lg hover:opacity-90 transition-opacity text-left"
+              className="rounded-lg hover:opacity-90 transition-opacity text-left font-normal"
               aria-label="Go to library"
             >
-              <BrandMark size="md" />
+              <BrandMark size="sm" hideTaglineOnMobile />
             </button>
             
             <div className="flex items-center gap-3">

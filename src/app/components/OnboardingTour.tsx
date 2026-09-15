@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from './ui/button';
 import { X } from 'lucide-react';
@@ -96,12 +96,14 @@ export function OnboardingTour({
     (step.waitForBoardClose && addBoardDialogOpen) ||
       (step.waitForAddMediaClose && addMediaDialogOpen),
   );
+  const ensureLibraryRef = useRef(onEnsureLibrary);
+  ensureLibraryRef.current = onEnsureLibrary;
 
   useEffect(() => {
     if (step.id === 'new-board' || step.id === 'add-media') {
-      onEnsureLibrary?.();
+      ensureLibraryRef.current?.();
     }
-  }, [step.id, onEnsureLibrary]);
+  }, [step.id]);
 
   const finish = () => {
     onComplete();
@@ -113,6 +115,31 @@ export function OnboardingTour({
       return;
     }
     setStepIndex((i) => i + 1);
+  };
+
+  const lastActionAtRef = useRef(0);
+  const runOnce = (action: () => void) => {
+    const now = Date.now();
+    if (now - lastActionAtRef.current < 400) return;
+    lastActionAtRef.current = now;
+    action();
+  };
+
+  const handleNext = (event: { preventDefault: () => void; stopPropagation: () => void }) => {
+    event.preventDefault();
+    event.stopPropagation();
+    runOnce(goNext);
+  };
+
+  const handleSkip = (event: { preventDefault: () => void; stopPropagation: () => void }) => {
+    event.preventDefault();
+    event.stopPropagation();
+    runOnce(finish);
+  };
+
+  const stopOverlayLeak = (event: PointerEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
   };
 
   useEffect(() => {
@@ -151,19 +178,36 @@ export function OnboardingTour({
       return;
     }
 
+    let misses = 0;
     const updateRect = () => {
       const el = document.getElementById(step.targetId!);
       if (!el) {
-        setTargetRect(null);
+        misses += 1;
+        if (misses > 5) setTargetRect(null);
         return;
       }
       const rect = el.getBoundingClientRect();
-      setTargetRect({
+      if (rect.width < 1 || rect.height < 1) {
+        misses += 1;
+        if (misses > 5) setTargetRect(null);
+        return;
+      }
+      misses = 0;
+      const next = {
         top: rect.top,
         left: rect.left,
         width: rect.width,
         height: rect.height,
-      });
+      };
+      setTargetRect((prev) =>
+        prev &&
+        prev.top === next.top &&
+        prev.left === next.left &&
+        prev.width === next.width &&
+        prev.height === next.height
+          ? prev
+          : next,
+      );
     };
 
     updateRect();
@@ -243,9 +287,11 @@ export function OnboardingTour({
     return null;
   }
 
+  const allowClickThrough = Boolean(step.interactive && clickHole);
+
   const tourUi = (
     <div
-      className="fixed inset-0 z-[100] pointer-events-none"
+      className={`fixed inset-0 z-[100] ${allowClickThrough ? 'pointer-events-none' : 'pointer-events-auto'}`}
       role="dialog"
       aria-modal="true"
       aria-label="App tour"
@@ -296,43 +342,45 @@ export function OnboardingTour({
         />
       </svg>
 
-      {step.interactive && clickHole ? (
+      {allowClickThrough && clickHole ? (
         <>
           <div
-            className="absolute inset-x-0 top-0 pointer-events-auto"
+            className="absolute inset-x-0 top-0 pointer-events-auto cursor-default"
             style={{ height: Math.max(0, clickHole.top) }}
+            onPointerDown={stopOverlayLeak}
             aria-hidden
           />
           <div
-            className="absolute inset-x-0 pointer-events-auto"
+            className="absolute inset-x-0 pointer-events-auto cursor-default"
             style={{
               top: clickHole.top + clickHole.height,
               height: Math.max(0, window.innerHeight - clickHole.top - clickHole.height),
             }}
+            onPointerDown={stopOverlayLeak}
             aria-hidden
           />
           <div
-            className="absolute left-0 pointer-events-auto"
+            className="absolute left-0 pointer-events-auto cursor-default"
             style={{
               top: clickHole.top,
               width: Math.max(0, clickHole.left),
               height: clickHole.height,
             }}
+            onPointerDown={stopOverlayLeak}
             aria-hidden
           />
           <div
-            className="absolute right-0 pointer-events-auto"
+            className="absolute right-0 pointer-events-auto cursor-default"
             style={{
               top: clickHole.top,
               width: Math.max(0, window.innerWidth - clickHole.left - clickHole.width),
               height: clickHole.height,
             }}
+            onPointerDown={stopOverlayLeak}
             aria-hidden
           />
         </>
-      ) : (
-        <div className="absolute inset-0 pointer-events-auto" aria-hidden />
-      )}
+      ) : null}
 
       {highlight && (
         <div
@@ -349,8 +397,9 @@ export function OnboardingTour({
       )}
 
       <div
-        className="pointer-events-auto rounded-lg border bg-background p-4 shadow-lg"
+        className="pointer-events-auto rounded-lg border bg-background p-4 shadow-lg [touch-action:manipulation]"
         style={{ ...tooltipStyle(), zIndex: 110 }}
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-2 mb-2">
@@ -360,7 +409,8 @@ export function OnboardingTour({
           {!isLast && (
             <button
               type="button"
-              onClick={finish}
+              onClick={handleSkip}
+              onTouchEnd={handleSkip}
               className="text-muted-foreground hover:text-foreground"
               aria-label="Skip tour"
             >
@@ -372,11 +422,23 @@ export function OnboardingTour({
         <p className="text-sm text-muted-foreground mb-4">{step.description}</p>
         <div className="flex flex-wrap justify-end gap-2">
           {!isLast && (
-            <Button type="button" variant="ghost" size="sm" onClick={finish}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleSkip}
+              onTouchEnd={handleSkip}
+            >
               Skip
             </Button>
           )}
-          <Button type="button" variant="accent" size="sm" onClick={goNext}>
+          <Button
+            type="button"
+            variant="accent"
+            size="sm"
+            onClick={handleNext}
+            onTouchEnd={handleNext}
+          >
             {isLast ? 'Got it' : 'Next'}
           </Button>
         </div>
