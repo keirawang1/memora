@@ -23,6 +23,7 @@ async function uploadToBucket(
     .from(bucket)
     .upload(path, blob, {
       contentType: blob.type || 'image/jpeg',
+      cacheControl: upsert ? '0' : '3600',
       upsert,
     });
 
@@ -56,13 +57,17 @@ async function deleteStorageObjectsBestEffort(
   }
 }
 
-async function deleteUserAvatarsFromStorage(userId: string): Promise<void> {
+async function deleteUserAvatarsFromStorage(
+  userId: string,
+  keepPath?: string,
+): Promise<void> {
   const { data, error } = await supabase.storage.from(AVATARS_BUCKET).list(userId);
   if (error || !data?.length) return;
 
   const paths = data
     .filter((file) => file.name.startsWith('avatar.'))
-    .map((file) => `${userId}/${file.name}`);
+    .map((file) => `${userId}/${file.name}`)
+    .filter((path) => path !== keepPath);
 
   await deleteStorageObjectsBestEffort(AVATARS_BUCKET, paths);
 }
@@ -71,10 +76,11 @@ export async function uploadUserAvatar(
   userId: string,
   dataUrl: string,
 ): Promise<string> {
-  await deleteUserAvatarsFromStorage(userId);
   const { blob, ext } = await dataUrlToBlob(dataUrl);
-  const path = `${userId}/avatar.${ext}`;
-  return uploadToBucket(AVATARS_BUCKET, path, blob, true);
+  const path = `${userId}/avatar.${crypto.randomUUID()}.${ext}`;
+  const publicUrl = await uploadToBucket(AVATARS_BUCKET, path, blob, false);
+  await deleteUserAvatarsFromStorage(userId, path);
+  return `${publicUrl.split('?')[0]}?t=${Date.now()}`;
 }
 
 export async function uploadPostImage(

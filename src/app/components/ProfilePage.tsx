@@ -120,6 +120,7 @@ export function ProfilePage({ user, mediaItems, accentColor, onUpdateProfile }: 
       ...prev,
       displayName: data.displayName.trim(),
       bio: data.bio.trim(),
+      avatar: data.avatar ?? prev.avatar,
     }));
   };
 

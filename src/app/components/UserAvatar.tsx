@@ -41,7 +41,10 @@ export function UserAvatar({
   }, [imageSrc]);
 
   return (
-    <Avatar className={cn(root, 'shrink-0 overflow-hidden rounded-full', className)}>
+    <Avatar
+      key={imageSrc ?? 'fallback'}
+      className={cn(root, 'shrink-0 overflow-hidden rounded-full', className)}
+    >
       {imageSrc && !imgError ? (
         <AvatarImage
           src={imageSrc}

@@ -974,12 +974,12 @@ function App() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) throw new Error('You must be signed in');
       const profile = await updateUserProfile(authUser.id, data);
-      setUser({
-        ...user,
+      setUser((prev) => ({
+        ...prev,
         displayName: profile.displayName,
         bio: profile.bio ?? data.bio.trim(),
         avatar: profile.avatar,
-      });
+      }));
       toast.success('Profile updated successfully!');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update profile';
@@ -1064,12 +1064,12 @@ function App() {
       });
       nextAvatar = profile.avatar;
 
-      setUser({
-        ...user,
+      setUser((prev) => ({
+        ...prev,
         username: nextUsername,
         email: nextEmail,
         avatar: nextAvatar,
-      });
+      }));
       toast.success('Account saved');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save account';

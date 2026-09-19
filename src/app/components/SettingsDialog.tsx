@@ -686,7 +686,7 @@ export function SettingsDialog({
                         type="file"
                         accept="image/*"
                         onChange={handleFileChange}
-                        className="hidden"
+                        className="sr-only"
                       />
                       <Button
                         variant="outline"
