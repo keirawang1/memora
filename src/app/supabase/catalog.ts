@@ -10,7 +10,11 @@ type CatalogRow = {
   genres: string[] | null;
   image_url: string | null;
   external_url: string | null;
+  synopsis?: string | null;
 };
+
+const CATALOG_COLUMNS =
+  'id, source, external_id, media_type, title, genres, image_url, external_url, synopsis';
 
 function formatLabel(mediaType: string): string {
   switch (mediaType) {
@@ -69,7 +73,49 @@ function rowToDiscovery(row: CatalogRow, reason?: string): DiscoveryItem {
     formatLabel: formatLabel(row.media_type),
     reason,
     catalogId: row.id,
+    synopsis: row.synopsis?.trim() || undefined,
   };
+}
+
+/** Synopsis from media_catalog by id, then source/external id, then exact title. */
+export async function fetchCatalogSynopsis(item: DiscoveryItem): Promise<string | null> {
+  const pick = (data: unknown): string | null => {
+    const rows = (Array.isArray(data) ? data : data ? [data] : []) as {
+      synopsis?: string | null;
+    }[];
+    const hit = rows.find((r) => r.synopsis?.trim());
+    return hit?.synopsis?.trim() ?? null;
+  };
+
+  if (item.catalogId) {
+    const { data } = await supabase
+      .from('media_catalog')
+      .select('synopsis')
+      .eq('id', item.catalogId)
+      .maybeSingle();
+    const text = pick(data);
+    if (text) return text;
+  }
+
+  if (item.externalId) {
+    const sources =
+      item.source === 'jikan' ? ['jikan'] : ['tmdb', 'movie_ratings'];
+    const { data } = await supabase
+      .from('media_catalog')
+      .select('synopsis')
+      .in('source', sources)
+      .eq('external_id', String(item.externalId))
+      .limit(3);
+    const text = pick(data);
+    if (text) return text;
+  }
+
+  const { data } = await supabase
+    .from('media_catalog')
+    .select('synopsis')
+    .ilike('title', item.title.trim().replace(/[\\%_]/g, (c) => `\\${c}`))
+    .limit(3);
+  return pick(data);
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -98,7 +144,7 @@ export async function fetchPopularFromCatalog(
 
   let query = supabase
     .from('media_catalog')
-    .select('id, source, external_id, media_type, title, genres, image_url, external_url')
+    .select(CATALOG_COLUMNS)
     .in('media_type', types)
     .not('image_url', 'is', null)
     .limit(80);
@@ -115,7 +161,7 @@ export async function fetchPopularFromCatalog(
   if (error || rows.length < limit) {
     const { data: fallback } = await supabase
       .from('media_catalog')
-      .select('id, source, external_id, media_type, title, genres, image_url, external_url')
+      .select(CATALOG_COLUMNS)
       .in('media_type', types)
       .not('image_url', 'is', null)
       .limit(80);
@@ -127,7 +173,7 @@ export async function fetchPopularFromCatalog(
   if (rows.length < limit) {
     const { data: anyRows } = await supabase
       .from('media_catalog')
-      .select('id, source, external_id, media_type, title, genres, image_url, external_url')
+      .select(CATALOG_COLUMNS)
       .not('image_url', 'is', null)
       .limit(80);
     rows = ((anyRows ?? []) as CatalogRow[]).filter(
@@ -176,7 +222,7 @@ export async function fetchTrendingFromCatalog(
 
   const { data } = await supabase
     .from('media_catalog')
-    .select('id, source, external_id, media_type, title, genres, image_url, external_url')
+    .select(CATALOG_COLUMNS)
     .in('media_type', types)
     .not('image_url', 'is', null)
     .order('updated_at', { ascending: false })

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { DiscoveryItem } from '../types/discovery';
 import { jikanFetchSynopsis } from '../services/jikan';
-import { supabase } from '../supabase/client';
+import { tmdbFetchOverview } from '../services/tmdb';
+import { fetchCatalogSynopsis } from '../supabase/catalog';
 import {
   Dialog,
   DialogContent,
@@ -19,19 +20,16 @@ interface DiscoveryDetailDialogProps {
 }
 
 async function fetchOverview(item: DiscoveryItem): Promise<string> {
-  if (item.catalogId) {
-    const { data } = await supabase
-      .from('media_catalog')
-      .select('synopsis')
-      .eq('id', item.catalogId)
-      .maybeSingle();
-    const text = (data as { synopsis?: string | null } | null)?.synopsis?.trim();
-    if (text) return text;
-  }
+  if (item.synopsis?.trim()) return item.synopsis.trim();
+
+  const fromCatalog = await fetchCatalogSynopsis(item).catch(() => null);
+  if (fromCatalog) return fromCatalog;
+
   if (item.source === 'jikan') {
-    return jikanFetchSynopsis(item);
+    return jikanFetchSynopsis(item, { bypassQueue: true });
   }
-  return 'No overview available.';
+  const fromTmdb = await tmdbFetchOverview(item).catch(() => null);
+  return fromTmdb ?? 'No overview available.';
 }
 
 export function DiscoveryDetailDialog({

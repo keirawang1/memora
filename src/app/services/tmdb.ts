@@ -70,6 +70,7 @@ function mapMovie(row: Record<string, unknown>): DiscoveryItem {
     genres: genresFromIds(row.genre_ids),
     link: `https://www.themoviedb.org/movie/${id}`,
     formatLabel: 'MOVIE',
+    synopsis: typeof row.overview === 'string' ? row.overview.trim() || undefined : undefined,
   };
 }
 
@@ -85,7 +86,16 @@ function mapTv(row: Record<string, unknown>): DiscoveryItem {
     genres: genresFromIds(row.genre_ids),
     link: `https://www.themoviedb.org/tv/${id}`,
     formatLabel: 'TV',
+    synopsis: typeof row.overview === 'string' ? row.overview.trim() || undefined : undefined,
   };
+}
+
+export async function tmdbFetchOverview(item: DiscoveryItem): Promise<string | null> {
+  if (item.source !== 'tmdb' || !item.externalId) return null;
+  const kind = item.type === 'tv' ? 'tv' : 'movie';
+  const data = await tmdbGet(`/${kind}/${item.externalId}`);
+  const text = typeof data?.overview === 'string' ? data.overview.trim() : '';
+  return text || null;
 }
 
 export async function tmdbTrendingMovies(limit = 20): Promise<DiscoveryItem[]> {

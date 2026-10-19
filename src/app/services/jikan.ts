@@ -148,6 +148,7 @@ interface JikanAnime {
   mal_id: number;
   title: string;
   type?: string;
+  synopsis?: string | null;
   images?: {
     jpg?: { large_image_url?: string; image_url?: string };
   };
@@ -182,6 +183,7 @@ function mapJikanAnime(anime: JikanAnime): DiscoveryItem {
     genres: malGenresToMemora(genreIds),
     link: `https://myanimelist.net/anime/${anime.mal_id}`,
     formatLabel,
+    synopsis: anime.synopsis?.trim() || undefined,
   };
 }
 
@@ -202,6 +204,7 @@ function mapJikanManga(manga: JikanAnime): DiscoveryItem {
     genres: malGenresToMemora(genreIds),
     link: `https://myanimelist.net/manga/${manga.mal_id}`,
     formatLabel,
+    synopsis: manga.synopsis?.trim() || undefined,
   };
 }
 
@@ -379,14 +382,24 @@ interface JikanDetailResponse {
   data: JikanDetailData;
 }
 
-export async function jikanFetchSynopsis(item: DiscoveryItem): Promise<string> {
+export async function jikanFetchSynopsis(
+  item: DiscoveryItem,
+  options: { bypassQueue?: boolean } = {},
+): Promise<string> {
   if (item.source !== 'jikan' || !item.externalId) {
     return 'No overview available.';
   }
   const path =
     item.type === 'anime' ? `/anime/${item.externalId}` : `/manga/${item.externalId}`;
   try {
-    const json = await jikanFetch<JikanDetailResponse>(path);
+    let json = readResponseCache<JikanDetailResponse>(path);
+    if (!json && options.bypassQueue) {
+      const res = await fetchWithHardTimeout(path);
+      if (!res.ok) return 'No overview available.';
+      json = (await res.json()) as JikanDetailResponse;
+      writeResponseCache(path, json);
+    }
+    json ??= await jikanFetch<JikanDetailResponse>(path);
     const text = json.data.synopsis?.trim() || json.data.background?.trim();
     return text || 'No overview available.';
   } catch {

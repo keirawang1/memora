@@ -30,7 +30,8 @@ const FEED_SESSION_VERSION = 'v17';
 const TRENDING_CACHE_KEY = `trending-live-${FEED_SESSION_VERSION}`;
 const HIGH_RATING = 4;
 const LIVE_FEED_TIMEOUT_MS = 2500;
-const REFRESH_TIMEOUT_MS = 8000;
+const REFRESH_TIMEOUT_MS = 7000;
+const RECS_MAX_WAIT_MS = 8000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return new Promise((resolve) => {
@@ -100,7 +101,8 @@ export function useDiscoveryFeed(
   const [trendingLoading, setTrendingLoading] = useState(
     () => !(session?.loaded && session.trending.length > 0),
   );
-  const loadingRef = useRef(false);
+  const loadingKeyRef = useRef<string | null>(null);
+  const runIdRef = useRef(0);
   const recLoadingRef = useRef(false);
 
   const persistSession = useCallback(
@@ -230,6 +232,35 @@ export function useDiscoveryFeed(
     [userId],
   );
 
+  const fallbackRecs = useCallback(async (avoid: DiscoveryItem[] = []) => {
+    const library = mediaItemsRef.current;
+    const typeHint =
+      preferredMediaTypesRef.current.length > 0
+        ? preferredMediaTypesRef.current
+        : customMediaTypesRef.current;
+    const excludeTitles = [
+      ...library.map((m) => normalizeTitleLocal(m.title)),
+      ...avoid.map((a) => normalizeTitleLocal(a.title)),
+    ];
+    const fromCatalog = await withTimeout(
+      fetchTrendingFromCatalog(typeHint, excludeTitles, 8)
+        .then(async (rows) =>
+          rows.length >= 4
+            ? rows
+            : [...rows, ...(await fetchPopularFromCatalog([], [], excludeTitles, 8))],
+        )
+        .catch(() => [] as DiscoveryItem[]),
+      1500,
+      [] as DiscoveryItem[],
+    );
+    const pool = excludeByTitle(
+      [...fromCatalog, ...getMangaFallbackPool(12, customMediaTypesRef.current)],
+      avoid,
+    );
+    const out = pool.slice(0, 4);
+    return out.length > 0 ? out : getMangaFallbackPool(4, []).slice(0, 4);
+  }, []);
+
   const loadTrending = useCallback(
     async (excludeRecs: DiscoveryItem[] = []) => {
       if (!userId) return [] as DiscoveryItem[];
@@ -286,7 +317,11 @@ export function useDiscoveryFeed(
   );
 
   const loadFeed = useCallback(async () => {
-    if (!userId || loadingRef.current) return;
+    if (!userId) return;
+    const key = sessionKey(userId);
+    if (loadingKeyRef.current === key) return;
+    const runId = ++runIdRef.current;
+    const isCurrent = () => runIdRef.current === runId;
 
     const existing = sessionFeed.get(sessionKey(userId));
     if (
@@ -303,47 +338,79 @@ export function useDiscoveryFeed(
       return;
     }
 
-    loadingRef.current = true;
+    loadingKeyRef.current = key;
     const needRecs = !(existing?.recommended && existing.recommended.length >= 4);
     const needTrend = !(existing?.trending && existing.trending.length > 0);
     if (needRecs) setRecommendedLoading(true);
     if (needTrend) setTrendingLoading(true);
 
+    const loadRecsWithRetry = async () => {
+      const attempt = async () => {
+        try {
+          const first = await loadForYou(false);
+          if (first.items.length > 0) return first;
+        } catch (err) {
+          console.warn('[discovery] recs first attempt failed', err);
+        }
+        await new Promise((r) => window.setTimeout(r, 800));
+        try {
+          const second = await loadForYou(false);
+          if (second.items.length > 0) return second;
+        } catch (err) {
+          console.warn('[discovery] recs retry failed', err);
+        }
+        return null;
+      };
+      const result = await withTimeout(attempt(), RECS_MAX_WAIT_MS, null);
+      if (result && result.items.length > 0) return result;
+      return { items: await fallbackRecs(), personalized: false };
+    };
+
     const recsTask = needRecs
-      ? loadForYou(false)
+      ? loadRecsWithRetry()
           .then((forYou) => {
             const recs = forYou.items.slice(0, 4);
+            if (!isCurrent()) return recs;
             setRecommended(recs);
             setPersonalized(forYou.personalized);
             setSeed(null);
-            persistSession({ recommended: recs, personalized: forYou.personalized, seed: null });
+            if (recs.length > 0) {
+              persistSession({ recommended: recs, personalized: forYou.personalized, seed: null });
+            }
             return recs;
           })
-          .catch(() => {
-            setRecommended([]);
+          .catch((err) => {
+            console.warn('[discovery] recs load failed', err);
+            if (isCurrent()) setRecommended([]);
             return [] as DiscoveryItem[];
           })
-          .finally(() => setRecommendedLoading(false))
+          .finally(() => {
+            if (isCurrent()) setRecommendedLoading(false);
+          })
       : Promise.resolve(existing?.recommended ?? []);
 
     const trendTask = needTrend
       ? loadTrending(existing?.recommended ?? [])
           .then((trendingItems) => {
             const aligned = trendingItems.slice(0, 4);
+            if (!isCurrent()) return aligned;
             setTrending(aligned);
-            persistSession({ trending: aligned });
+            if (aligned.length > 0) persistSession({ trending: aligned });
             return aligned;
           })
-          .catch(() => {
-            setTrending([]);
+          .catch((err) => {
+            console.warn('[discovery] trending load failed', err);
+            if (isCurrent()) setTrending([]);
             return [] as DiscoveryItem[];
           })
-          .finally(() => setTrendingLoading(false))
+          .finally(() => {
+            if (isCurrent()) setTrendingLoading(false);
+          })
       : Promise.resolve(existing?.trending ?? []);
 
     await Promise.all([recsTask, trendTask]);
-    loadingRef.current = false;
-  }, [userId, persistSession, loadForYou, loadTrending]);
+    if (loadingKeyRef.current === key) loadingKeyRef.current = null;
+  }, [userId, persistSession, loadForYou, loadTrending, fallbackRecs]);
 
   useEffect(() => {
     if (!userId) {
@@ -351,7 +418,12 @@ export function useDiscoveryFeed(
       setTrendingLoading(false);
       return;
     }
-    if (!libraryReady) return;
+    if (!libraryReady) {
+      const cached = sessionFeed.get(sessionKey(userId));
+      if (!(cached?.recommended.length)) setRecommendedLoading(true);
+      if (!(cached?.trending.length)) setTrendingLoading(true);
+      return;
+    }
     void loadFeed();
   }, [userId, libraryReady, loadFeed]);
 
@@ -362,7 +434,18 @@ export function useDiscoveryFeed(
 
     void (async () => {
       try {
-        const forYou = await loadForYou(true);
+        const loaded = await withTimeout(
+          loadForYou(true).catch((err) => {
+            console.warn('[discovery] recs refresh failed', err);
+            return null;
+          }),
+          RECS_MAX_WAIT_MS,
+          null,
+        );
+        const forYou =
+          loaded && loaded.items.length > 0
+            ? loaded
+            : { items: await fallbackRecs(recommended), personalized: false };
         const recs = forYou.items.slice(0, 4);
         setRecommended(recs);
         setPersonalized(forYou.personalized);
@@ -380,7 +463,7 @@ export function useDiscoveryFeed(
         recLoadingRef.current = false;
       }
     })();
-  }, [userId, loadForYou, persistSession, trending]);
+  }, [userId, loadForYou, persistSession, trending, recommended, fallbackRecs]);
 
   return {
     recommended,

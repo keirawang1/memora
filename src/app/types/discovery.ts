@@ -13,6 +13,7 @@ export interface DiscoveryItem {
   reason?: string;
   sourceLikes?: string[];
   catalogId?: string;
+  synopsis?: string;
 }
 
 export interface DiscoverySeed {
