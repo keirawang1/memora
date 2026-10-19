@@ -21,6 +21,7 @@ interface RecommendationsPageProps {
   maxRefreshes?: number;
   /** Show a demo-mode limitations note. */
   demoMode?: boolean;
+  libraryReady?: boolean;
   onAddMedia?: (
     media: Omit<MediaItem, 'id' | 'dateAdded'> & { id?: string },
     boardIds: string[],
@@ -89,6 +90,7 @@ export function RecommendationsPage({
   customGenres = [],
   maxRefreshes,
   demoMode = false,
+  libraryReady = true,
   onAddMedia,
 }: RecommendationsPageProps) {
   const liveFeed = useDiscoveryFeed(
@@ -97,6 +99,7 @@ export function RecommendationsPage({
     preferredGenres,
     customMediaTypes,
     preferredMediaTypes,
+    libraryReady,
   );
 
   const [refreshCount, setRefreshCount] = useState(0);

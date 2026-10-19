@@ -21,6 +21,7 @@ import {
   jikanTopAiringAnime,
   jikanTopPublishingManga,
   jikanTopManga,
+  jikanTopMangaOfType,
   jikanMangaByGenres,
   jikanPopularPrintMix,
   DEFAULT_MANGA_REC_SEED_ID,
@@ -473,20 +474,11 @@ export async function fetchTrendingSection(
   const jikanTypes = preferredPrintTypesToJikan(printTypes);
 
   const [animePool, mangaPool, moviePool, tvPool] = await Promise.all([
-    jikanSeasonNow(20)
-      .then(async (season) =>
-        season.length >= TRENDING_COUNT
-          ? season
-          : dedupeDiscoveryItems([...season, ...(await jikanTopAiringAnime(20))]),
-      )
-      .catch(() => [] as DiscoveryItem[]),
-    jikanPopularPrintMix(jikanTypes, 25)
-      .then(async (mix) =>
-        mix.length >= TRENDING_COUNT
-          ? mix
-          : dedupeDiscoveryItems([...mix, ...(await jikanTopPublishingManga(25))]),
-      )
-      .catch(() => [] as DiscoveryItem[]),
+    jikanSeasonNow(20).catch(() => [] as DiscoveryItem[]),
+    (jikanTypes[0]
+      ? jikanTopMangaOfType(jikanTypes[0], 20)
+      : jikanTopPublishingManga(20)
+    ).catch(() => [] as DiscoveryItem[]),
     tmdbTrendingMovies(20).catch(() => [] as DiscoveryItem[]),
     tmdbTrendingTv(20).catch(() => [] as DiscoveryItem[]),
   ]);
@@ -677,19 +669,14 @@ export async function fetchColdStartRecommendations(
   const jikanTypes = preferredPrintTypesToJikan(printTypes);
 
   const [animePool, mangaPool, moviePool, tvPool] = await Promise.all([
+    (malIds.length > 0 ? jikanAnimeByGenres(malIds, 20) : jikanTopAnime(20)).catch(
+      () => [] as DiscoveryItem[],
+    ),
     (malIds.length > 0
-      ? jikanAnimeByGenres(malIds, 20).then(async (rows) =>
-          rows.length >= TRENDING_COUNT ? rows : dedupeDiscoveryItems([...rows, ...(await jikanTopAnime(20))]),
-        )
-      : jikanTopAnime(20)
-    ).catch(() => [] as DiscoveryItem[]),
-    (malIds.length > 0
-      ? jikanMangaByGenres(malIds, 20).then(async (rows) =>
-          rows.length >= TRENDING_COUNT
-            ? rows
-            : dedupeDiscoveryItems([...rows, ...(await jikanPopularPrintMix(jikanTypes, 20))]),
-        )
-      : jikanPopularPrintMix(jikanTypes, 20)
+      ? jikanMangaByGenres(malIds, 20)
+      : jikanTypes[0]
+        ? jikanTopMangaOfType(jikanTypes[0], 20)
+        : jikanTopManga(20)
     ).catch(() => [] as DiscoveryItem[]),
     tmdbTrendingMovies(20).catch(() => [] as DiscoveryItem[]),
     tmdbTrendingTv(20).catch(() => [] as DiscoveryItem[]),

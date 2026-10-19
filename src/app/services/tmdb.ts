@@ -38,9 +38,19 @@ async function tmdbGet(path: string): Promise<Record<string, unknown> | null> {
   const key = apiKey();
   if (!key) return null;
   const sep = path.includes('?') ? '&' : '?';
-  const res = await fetch(`${TMDB}${path}${sep}api_key=${key}`);
-  if (!res.ok) return null;
-  return (await res.json()) as Record<string, unknown>;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3500);
+  try {
+    const res = await fetch(`${TMDB}${path}${sep}api_key=${key}`, {
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Record<string, unknown>;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function genresFromIds(ids: unknown): string[] {

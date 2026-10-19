@@ -6,9 +6,11 @@ const BASE = 'https://api.jikan.moe/v4';
 
 /** Jikan: ~3 req/s advertised; stay well under to avoid 429/504 cascades. */
 const MIN_GAP_MS = 1100;
-const REQUEST_TIMEOUT_MS = 10000;
+const REQUEST_TIMEOUT_MS = 3500;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const COOLDOWN_429_MS = 8000;
+const CIRCUIT_OPEN_MS = 60_000;
+const CIRCUIT_FAILS = 2;
 
 type QueueJob = {
   path: string;
@@ -21,6 +23,25 @@ const queue: QueueJob[] = [];
 let pumping = false;
 let lastRequestAt = 0;
 let cooldownUntil = 0;
+let circuitOpenUntil = 0;
+let consecutiveFails = 0;
+
+function rejectQueued(reason: Error): void {
+  while (queue.length > 0) {
+    queue.shift()!.reject(reason);
+  }
+}
+
+function openCircuit(): void {
+  consecutiveFails += 1;
+  if (consecutiveFails < CIRCUIT_FAILS) return;
+  circuitOpenUntil = Date.now() + CIRCUIT_OPEN_MS;
+  rejectQueued(new Error('Jikan circuit open'));
+}
+
+function noteJikanSuccess(): void {
+  consecutiveFails = 0;
+}
 
 function readResponseCache<T>(path: string): T | null {
   const hit = responseCache.get(path);
@@ -36,6 +57,26 @@ function writeResponseCache(path: string, data: unknown): void {
   responseCache.set(path, { data, expiresAt: Date.now() + CACHE_TTL_MS });
 }
 
+function fetchWithHardTimeout(path: string): Promise<Response> {
+  const controller = new AbortController();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Jikan ${path}: timeout`));
+    }, REQUEST_TIMEOUT_MS);
+    fetch(`${BASE}${path}`, { signal: controller.signal }).then(
+      (res) => {
+        clearTimeout(timer);
+        resolve(res);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 async function pumpQueue(): Promise<void> {
   if (pumping) return;
   pumping = true;
@@ -48,6 +89,12 @@ async function pumpQueue(): Promise<void> {
       continue;
     }
 
+    if (Date.now() < circuitOpenUntil) {
+      job.reject(new Error('Jikan circuit open'));
+      rejectQueued(new Error('Jikan circuit open'));
+      break;
+    }
+
     const now = Date.now();
     const waitForCooldown = Math.max(0, cooldownUntil - now);
     const waitForGap = Math.max(0, MIN_GAP_MS - (now - lastRequestAt));
@@ -55,39 +102,13 @@ async function pumpQueue(): Promise<void> {
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 
     lastRequestAt = Date.now();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const res = await fetch(`${BASE}${job.path}`, { signal: controller.signal });
+      const res = await fetchWithHardTimeout(job.path);
 
       if (res.status === 429) {
         cooldownUntil = Date.now() + COOLDOWN_429_MS;
         job.reject(new Error(`Jikan ${job.path}: 429`));
-        continue;
-      }
-
-      if (res.status === 503 || res.status === 504) {
-        // One short retry after cooldown — Jikan flaps on these often
-        cooldownUntil = Date.now() + 2500;
-        await new Promise((r) => setTimeout(r, 2500));
-        lastRequestAt = Date.now();
-        const retryController = new AbortController();
-        const retryTimer = setTimeout(() => retryController.abort(), REQUEST_TIMEOUT_MS);
-        try {
-          const retry = await fetch(`${BASE}${job.path}`, { signal: retryController.signal });
-          if (retry.ok) {
-            const json = await retry.json();
-            writeResponseCache(job.path, json);
-            job.resolve(json);
-            continue;
-          }
-        } catch {
-          // fall through to reject
-        } finally {
-          clearTimeout(retryTimer);
-        }
-        job.reject(new Error(`Jikan ${job.path}: ${res.status}`));
         continue;
       }
 
@@ -97,12 +118,12 @@ async function pumpQueue(): Promise<void> {
       }
 
       const json = await res.json();
+      noteJikanSuccess();
       writeResponseCache(job.path, json);
       job.resolve(json);
     } catch (err) {
+      openCircuit();
       job.reject(err);
-    } finally {
-      clearTimeout(timer);
     }
   }
 

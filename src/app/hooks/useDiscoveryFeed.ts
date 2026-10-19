@@ -7,6 +7,7 @@ import {
   fetchTrendingSection,
   isPersonalizedRecommendations,
 } from '../data/recommendationEngine';
+import { getMangaFallbackPool } from '../data/mangaFallback';
 import { readFeedCache, writeFeedCache } from '../data/discoveryCache';
 import { fetchPopularFromCatalog, fetchTrendingFromCatalog } from '../supabase/catalog';
 import {
@@ -25,9 +26,27 @@ interface UseDiscoveryFeedResult {
   refreshRecommended: () => void;
 }
 
-const FEED_SESSION_VERSION = 'v16';
+const FEED_SESSION_VERSION = 'v17';
 const TRENDING_CACHE_KEY = `trending-live-${FEED_SESSION_VERSION}`;
 const HIGH_RATING = 4;
+const LIVE_FEED_TIMEOUT_MS = 2500;
+const REFRESH_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        window.clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
+}
 
 const sessionFeed = new Map<
   string,
@@ -54,6 +73,7 @@ export function useDiscoveryFeed(
   preferredGenres: string[] = [],
   customMediaTypes: string[] = [],
   preferredMediaTypes: string[] = [],
+  libraryReady = true,
 ): UseDiscoveryFeedResult {
   const mediaItemsRef = useRef(mediaItems);
   mediaItemsRef.current = mediaItems;
@@ -117,21 +137,25 @@ export function useDiscoveryFeed(
       const exclude = items.map((m) => normalizeTitleLocal(m.title));
       const isDemo = userId.startsWith('demo');
 
+      const catalogTypes = mediaTypes.length > 0 ? mediaTypes : customMediaTypesRef.current;
+
       const coldStart = async () => {
-        try {
-          const cold = await fetchColdStartRecommendations(genres, mediaTypes, items);
-          if (cold.length >= 4) return cold;
-          if (cold.length > 0) {
-            const extra = await fetchPopularFromCatalog(mediaTypes, genres, [
-              ...exclude,
-              ...cold.map((c) => normalizeTitleLocal(c.title)),
-            ], 4 - cold.length);
-            return [...cold, ...extra].slice(0, 4);
-          }
-        } catch {
-          // fall through
-        }
-        return fetchPopularFromCatalog(mediaTypes, genres, exclude, 4);
+        const catalog = await fetchPopularFromCatalog(catalogTypes, genres, exclude, 4);
+        if (catalog.length >= 4) return catalog;
+        const live = await withTimeout(
+          fetchColdStartRecommendations(genres, mediaTypes, items),
+          LIVE_FEED_TIMEOUT_MS,
+          [] as DiscoveryItem[],
+        );
+        const merged = excludeByTitle([...live, ...catalog], []).slice(0, 4);
+        if (merged.length >= 4) return merged;
+        const extra = await fetchPopularFromCatalog(
+          catalogTypes,
+          genres,
+          [...exclude, ...merged.map((c) => normalizeTitleLocal(c.title))],
+          4 - merged.length,
+        );
+        return [...merged, ...extra].slice(0, 4);
       };
 
       // Demo has no real user recs row — always use live cold-start / catalog APIs.
@@ -160,11 +184,15 @@ export function useDiscoveryFeed(
           }
         }
 
-        const result = await refreshRecommendations(true);
+        const result = await withTimeout(
+          refreshRecommendations(true),
+          REFRESH_TIMEOUT_MS,
+          { items: [] as Awaited<ReturnType<typeof refreshRecommendations>>['items'], cached: false },
+        );
         let mapped = (result.items ?? []).map(cachedRecToDiscoveryItem);
         if (mapped.length > 0 && mapped.length < 4) {
           const extra = await fetchPopularFromCatalog(
-            mediaTypes,
+            catalogTypes,
             genres,
             [...exclude, ...mapped.map((m) => normalizeTitleLocal(m.title))],
             4 - mapped.length,
@@ -212,46 +240,47 @@ export function useDiscoveryFeed(
       }
 
       const library = mediaItemsRef.current;
+      const typeHint =
+        preferredMediaTypesRef.current.length > 0
+          ? preferredMediaTypesRef.current
+          : customMediaTypesRef.current;
       const excludeTitles = [
         ...library.map((m) => normalizeTitleLocal(m.title)),
         ...excludeRecs.map((r) => normalizeTitleLocal(r.title)),
       ];
 
-      try {
-        const result = await fetchTrendingSection(
+      const catalog = await fetchTrendingFromCatalog(typeHint, excludeTitles, 4);
+      const fromCatalog = excludeByTitle(catalog, excludeRecs).slice(0, 4);
+      if (fromCatalog.length >= 4) {
+        writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, fromCatalog);
+        return fromCatalog;
+      }
+
+      const live = await withTimeout(
+        fetchTrendingSection(
           library,
           excludeRecs,
           customMediaTypesRef.current,
           preferredMediaTypesRef.current,
-        );
-        const live = excludeByTitle(result.items, excludeRecs).slice(0, 4);
-        if (live.length >= 4) {
-          writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, live);
-          return live;
-        }
+        ).then((result) => excludeByTitle(result.items, excludeRecs).slice(0, 4)),
+        LIVE_FEED_TIMEOUT_MS,
+        [] as DiscoveryItem[],
+      );
 
-        // Partial live — fill remaining with recent catalog (not For You genre pool)
-        const fill = await fetchTrendingFromCatalog(
-          preferredMediaTypesRef.current,
-          [...excludeTitles, ...live.map((i) => normalizeTitleLocal(i.title))],
-          4 - live.length,
-        );
-        const mixed = [...live, ...fill].slice(0, 4);
-        if (mixed.length > 0) {
-          writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, mixed);
-        }
+      const mixed = excludeByTitle([...live, ...fromCatalog], excludeRecs).slice(0, 4);
+      if (mixed.length >= 4) {
+        writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, mixed);
         return mixed;
-      } catch {
-        const fallback = await fetchTrendingFromCatalog(
-          preferredMediaTypesRef.current,
-          excludeTitles,
-          4,
-        );
-        if (fallback.length > 0) {
-          writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, fallback);
-        }
-        return fallback;
       }
+
+      const fallback = excludeByTitle(
+        [...mixed, ...getMangaFallbackPool(8, customMediaTypesRef.current)],
+        excludeRecs,
+      ).slice(0, 4);
+      if (fallback.length > 0) {
+        writeFeedCache(userId, 'trending', TRENDING_CACHE_KEY, fallback);
+      }
+      return fallback;
     },
     [userId],
   );
@@ -280,36 +309,40 @@ export function useDiscoveryFeed(
     if (needRecs) setRecommendedLoading(true);
     if (needTrend) setTrendingLoading(true);
 
-    let recs: DiscoveryItem[] = existing?.recommended ?? [];
+    const recsTask = needRecs
+      ? loadForYou(false)
+          .then((forYou) => {
+            const recs = forYou.items.slice(0, 4);
+            setRecommended(recs);
+            setPersonalized(forYou.personalized);
+            setSeed(null);
+            persistSession({ recommended: recs, personalized: forYou.personalized, seed: null });
+            return recs;
+          })
+          .catch(() => {
+            setRecommended([]);
+            return [] as DiscoveryItem[];
+          })
+          .finally(() => setRecommendedLoading(false))
+      : Promise.resolve(existing?.recommended ?? []);
 
-    try {
-      if (needRecs) {
-        const forYou = await loadForYou(false);
-        recs = forYou.items.slice(0, 4);
-        setRecommended(recs);
-        setPersonalized(forYou.personalized);
-        setSeed(null);
-        persistSession({ recommended: recs, personalized: forYou.personalized, seed: null });
-      }
-    } catch {
-      if (needRecs) setRecommended([]);
-    } finally {
-      if (needRecs) setRecommendedLoading(false);
-    }
+    const trendTask = needTrend
+      ? loadTrending(existing?.recommended ?? [])
+          .then((trendingItems) => {
+            const aligned = trendingItems.slice(0, 4);
+            setTrending(aligned);
+            persistSession({ trending: aligned });
+            return aligned;
+          })
+          .catch(() => {
+            setTrending([]);
+            return [] as DiscoveryItem[];
+          })
+          .finally(() => setTrendingLoading(false))
+      : Promise.resolve(existing?.trending ?? []);
 
-    try {
-      if (needTrend) {
-        const trendingItems = await loadTrending(recs);
-        const aligned = trendingItems.slice(0, 4);
-        setTrending(aligned);
-        persistSession({ trending: aligned });
-      }
-    } catch {
-      if (needTrend) setTrending([]);
-    } finally {
-      if (needTrend) setTrendingLoading(false);
-      loadingRef.current = false;
-    }
+    await Promise.all([recsTask, trendTask]);
+    loadingRef.current = false;
   }, [userId, persistSession, loadForYou, loadTrending]);
 
   useEffect(() => {
@@ -318,8 +351,9 @@ export function useDiscoveryFeed(
       setTrendingLoading(false);
       return;
     }
+    if (!libraryReady) return;
     void loadFeed();
-  }, [userId, loadFeed]);
+  }, [userId, libraryReady, loadFeed]);
 
   const refreshRecommended = useCallback(() => {
     if (!userId || recLoadingRef.current) return;

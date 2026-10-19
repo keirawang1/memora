@@ -1338,6 +1338,7 @@ function App() {
               preferredMediaTypes={preferredMediaTypes}
               customMediaTypes={customMediaTypes}
               customGenres={customGenres}
+              libraryReady={libraryLoaded}
               onAddMedia={handleAddMedia}
             />
           </TabsContent>

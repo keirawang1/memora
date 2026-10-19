@@ -34,7 +34,15 @@ function mapPreferredToCatalogTypes(preferredMediaTypes: string[]): string[] {
     const t = raw.trim().toLowerCase();
     let mapped: string | null = null;
     if (t === 'anime') mapped = 'anime';
-    else if (t === 'manga' || t === 'comic' || t === 'manhwa' || t === 'manhua' || t === 'light novel') {
+    else if (
+      t === 'manga' ||
+      t === 'comic' ||
+      t === 'manhwa' ||
+      t === 'manhua' ||
+      t === 'light novel' ||
+      t === 'danmei' ||
+      t === 'fanfic'
+    ) {
       mapped = 'manga';
     } else if (t === 'movie') mapped = 'movie';
     else if (t === 'tv' || t === 'show' || t === 'series') mapped = 'tv';
